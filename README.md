@@ -2,6 +2,8 @@
 
 > MathViz — teach the model to draw math, then render it live: plots, 3D solids, and graphs, right inside the chat.
 
+中文 · [English](README.en.md)
+
 **MathViz 做两件事：**
 
 1. **教会大模型画数学图。** 模型手写 SVG 画函数、立体、图论，错误高度集中——忘翻 y 轴、手算采样点、硬编码投影、边穿过节点。MathViz 把一套「作图协议 + 运行时」交给模型：模型只写数学表达式（`x => x*x - 2`、`edges:[["A","B",4]]`），采样、投影、布局、断点、隐藏边判定全部交给代码算。**这不只是给模型一个工具，而是一套可迭代的训练方法**：每一次模型画错，都变成运行时的一层容错或测试集的一条用例——今天修掉的「图例传字符串数组」「点了已释放的节点」，明天就是协议里的明确禁令。
