@@ -5,7 +5,7 @@
 
 不复制业务代码 —— `build.mjs` 从 `../dist/extension/` 组装 assets，源码只有 `mathviz/src/` 一份。
 
-## 三条平台替换
+## 平台替换
 
 | 浏览器扩展 | Android | 实现位置 |
 |---|---|---|
@@ -13,6 +13,40 @@
 | `chrome.storage.local` | `Bridge.load/save()` → SharedPreferences | 同上 |
 | `manifest.content_scripts` 声明注入 | `onPageFinished` → `evaluateJavascript(assets/inject.js)` | `MainActivity.HostClient` |
 | `sandbox.pages` + WAR 提供 viewer | `shouldInterceptRequest` 把虚拟域名映射到 `assets/viewer.html` | 同上 |
+| 浏览器原生 `<input type=file>` | `onShowFileChooser` → 相册 / 文件选择器 | `MainActivity.HostChrome` |
+
+### 附件上传（v1.1）
+
+网页版早有附件按钮，套壳一开始点了**完全没反应**——WebView 默认不实现
+`onShowFileChooser`，`<input type="file">` 被点击时没有任何宿主处理。
+
+DeepSeek 只用一个隐藏的 `input[type=file]`，`accept` 是上千个扩展名（图片 + 文档 + 代码），
+`multiple=true`。现在的分流：
+
+- `accept` 全是图片 → 直接开相册（`ACTION_GET_CONTENT image/*`）
+- 其它（DeepSeek 就属于这种）→ 先弹「上传附件」菜单，再选「从相册选图片」或「选择文件」
+- 单选走 `GET_CONTENT`（有相册入口），多选走 `ACTION_OPEN_DOCUMENT`（官方多选路径）
+- **每条路径都必须给 `onReceiveValue` 回一次**（用户取消就回 `null`），否则 WebView 认为这次
+  选择没结束，之后再点附件按钮永远不弹。代码里 `cancelUpload()` 专门守这条。
+
+不需要存储权限：SAF / GET_CONTENT 给的是一次性读授权，WebView 直接读 `content://` 即可。
+
+### 多选为什么自己解析 Uri
+
+多选曾经「选了两张，回到聊天一个都没有」，日志是：
+
+```
+附件选择返回 resultCode=-1 uri=null | data=action=null data=null clip=2
+```
+
+`resultCode` 是 OK、`clipData` 有两项，但 `data` 为 null。MuMu / AOSP 12 的 DocumentsUI
+在多选时只塞 `clipData`、不设 `Intent.data`，而
+`WebChromeClient.FileChooserParams.parseResult` 内部要求 `intent.getData()` 非空，
+于是直接返回 null —— 单选不受影响，只有多选中招。
+
+所以 `urisFromResult()` 自己取：先读 `clipData`（多选），再退回 `data`，最后才交给
+`parseResult` 兜底。顺便解决另一个隐患：某些选择器只返回单选 data，这样两种都能拿到。
+
 
 `content.js` 只认 `window.MVPlatform`，不直接碰 `chrome.*`（构建时会校验）。
 模型代码仍在 `sandbox="allow-scripts"` 的 iframe 里执行，viewer 来自本地虚拟域名，
