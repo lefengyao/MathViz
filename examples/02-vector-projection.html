@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>向量、投影与张成空间</title>
+<style>
+  :root{
+    --color-background-primary:#ffffff; --color-text-primary:#1a1a19;
+    --font-sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-serif:Georgia,"Times New Roman",serif;
+  }
+  body{margin:0;padding:28px 20px;background:#fff;color:#1a1a19;font-family:var(--font-sans)}
+  figure{max-width:680px;margin:0 auto}
+  figcaption{font-size:13px;color:#5F5E5A;line-height:1.7;margin-top:12px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#F1EFE8;padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+<figure>
+  <div id="fig"></div>
+  <figcaption>
+    绿色箭头是 <code>b</code> 在 <code>a</code> 方向上的投影，灰色虚线是垂线。
+    背景两组平行线是两个方向的「等系数线」，交点就是 <code>a</code>、<code>b</code> 的整系数组合——
+    两组线铺满整个平面，说明 <code>span{a, b} = ℝ²</code>。
+  </figcaption>
+</figure>
+
+<script src="../skill/assets/mk-core.js"></script>
+<script>
+var V = MK.frame({
+  box: [56, 26, 380, 336],
+  x: [-2.95, 2.95],
+  y: [-2.6, 2.6],
+  equal: true,
+  grid: false,
+  axes: true,
+  title: "向量投影与张成空间",
+  desc: "向量 a、b，b 在 a 上的投影，以及二者张成的平面"
+});
+document.getElementById("fig").appendChild(V.svg);
+
+var a = [1.9, 0.6];
+var b = [0.5, 1.85];
+
+for (var i = -4; i <= 4; i++) {
+  V.seg([a[0] * i - b[0] * 4, a[1] * i - b[1] * 4],
+        [a[0] * i + b[0] * 4, a[1] * i + b[1] * 4],
+        { color: "gray", w: 0.6, opacity: 0.32 });
+}
+for (var j = -4; j <= 4; j++) {
+  V.seg([b[0] * j - a[0] * 4, b[1] * j - a[1] * 4],
+        [b[0] * j + a[0] * 4, b[1] * j + a[1] * 4],
+        { color: "gray", w: 0.6, opacity: 0.32 });
+}
+
+var t = (b[0] * a[0] + b[1] * a[1]) / (a[0] * a[0] + a[1] * a[1]);
+var proj = [a[0] * t, a[1] * t];
+
+V.arrow([0, 0], a, { color: "blue", label: "a", w: 2.4 });
+V.seg(b, proj, { dash: true, color: "gray", w: 1.2 });
+V.arrow([0, 0], b, { color: "coral", label: "b", w: 2.2 });
+V.arrow([0, 0], proj, { color: "green", w: 2.6, head: 10 });
+V.rightAngle(proj, b, [0, 0], { size: 10, color: "gray" });
+
+V.arrow([0, 0], [a[0] + b[0], a[1] + b[1]], { color: "purple", w: 1.6, dash: "5 3" });
+V.label([a[0] + b[0], a[1] + b[1]], "a + b", { dx: 9, dy: 4, color: "purple", size: 12 });
+
+V.label(proj, "proj", { dx: 6, dy: -7, color: "green", size: 11, anchor: "end" });
+
+V.legend([
+  { text: "向量 a", color: "blue" },
+  { text: "向量 b", color: "coral" },
+  { text: "b 在 a 上的投影", color: "green" },
+  { text: "a + b", color: "purple", dash: true }
+], { x: 470, y: 96 });
+</script>
+</body>
+</html>

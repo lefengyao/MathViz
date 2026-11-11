@@ -1,0 +1,39 @@
+{
+  "app": "com.mathviz.app",
+  "pid": "13974",
+  "at": "2026-11-11T14:38:19.609Z",
+  "checks": {
+    "runtime": {
+      "url": "https://chat.deepseek.com/",
+      "ready": "complete",
+      "injected": true,
+      "platform": "object",
+      "bridge": "object",
+      "prompt": "object",
+      "detect": "object",
+      "css": "string",
+      "toolbar": true,
+      "width": 360,
+      "narrow": true,
+      "hostClass": "mv-toolbar-host",
+      "hostPos": {
+        "top": "10px",
+        "left": "202.615px",
+        "bottom": "658.667px",
+        "right": "12px"
+      },
+      "chromeCalls": true
+    },
+    "prompt": {
+      "hasMark": true,
+      "keepsQuestion": true,
+      "length": 2967
+    },
+    "render": {
+      "inlineHost": true,
+      "state": "已渲染 1 张",
+      "src": "https://mathviz.local/viewer.html?theme=light&id=mv1-148f547a",
+      "sandbox": "allow-scripts"
+    }
+  }
+}

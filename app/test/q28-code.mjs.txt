@@ -1,0 +1,8 @@
+var V = MK.frame({box:[40,26,600,330], x:[-4.2,4.2], y:[-0.08,0.8], equal:false, grid:true, axes:true, title:'正态密度：σ=0.6 与 σ=1.2'});
+document.getElementById('fig').appendChild(V.svg);
+function nd(x, s){ return Math.exp(-x*x/(2*s*s))/(s*Math.sqrt(2*Math.PI)); }
+V.area(function(x){ return nd(x,0.6); }, -0.6, 0.6, {color:'blue', opacity:0.22});
+V.plot(function(x){ return nd(x,0.6); }, {color:'blue', w:2.2});
+V.plot(function(x){ return nd(x,1.2); }, {color:'teal', w:2.2});
+V.legend([{color:'blue', label:'σ = 0.6'}, {color:'teal', label:'σ = 1.2'}]);
+V.label([0.75,0.28], 'μ±σ 内 ≈ 68.3%', {color:'blue', size:12});

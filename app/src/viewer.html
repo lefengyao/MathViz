@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MathViz viewer</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { font-family: var(--font-sans, system-ui, sans-serif); }
+  #fig { width: 100%; overflow: visible; }
+  #fig > svg { display: block; width: 100%; height: auto; max-width: 680px; }
+  #mv-err { display: none; margin: 8px 4px; padding: 10px 12px; border-radius: 8px;
+            font: 12px/1.6 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+</style>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var dark = q.get('theme') === 'dark';
+  var r = document.documentElement;
+  r.setAttribute('data-theme', dark ? 'dark' : 'light');
+  r.style.setProperty('--color-background-primary', dark ? '#1f1f1e' : '#ffffff');
+  r.style.setProperty('--color-text-primary', dark ? '#f1efe8' : '#1a1a19');
+  r.style.setProperty('--font-sans', 'system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif');
+  r.style.setProperty('--font-serif', 'Georgia, "Times New Roman", serif');
+})();
+</script>
+<script>
+/* __MK_CORE__ */
+</script>
+<script>
+/* __MK_3D__ */
+</script>
+<script>
+/* __MK_GRAPH__ */
+</script>
+</head>
+<body>
+<div id="fig"></div>
+<pre id="mv-err"></pre>
+<script>
+/* __VIEWER_JS__ */
+</script>
+</body>
+</html>

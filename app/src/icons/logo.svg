@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- MathViz logo · 定稿：坐标纸 + 坐标轴 + 正弦 + 峰值点 -->
+  <rect width="512" height="512" rx="112" fill="#185FA5"/>
+  <g stroke="#FBFAF7" stroke-opacity="0.16" stroke-width="3">
+    <line x1="64" y1="0" x2="64" y2="512"/>
+    <line x1="192" y1="0" x2="192" y2="512"/>
+    <line x1="256" y1="0" x2="256" y2="512"/>
+    <line x1="320" y1="0" x2="320" y2="512"/>
+    <line x1="384" y1="0" x2="384" y2="512"/>
+    <line x1="448" y1="0" x2="448" y2="512"/>
+    <line x1="0" y1="64" x2="512" y2="64"/>
+    <line x1="0" y1="192" x2="512" y2="192"/>
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="0" y1="320" x2="512" y2="320"/>
+    <line x1="0" y1="448" x2="512" y2="448"/>
+  </g>
+  <g>
+    <line x1="56" y1="384" x2="456" y2="384" stroke="#FBFAF7" stroke-width="12" stroke-linecap="round"/>
+    <line x1="128" y1="456" x2="128" y2="56" stroke="#FBFAF7" stroke-width="12" stroke-linecap="round"/>
+    <path d="M96,330 C158,168 236,168 298,330 C360,492 424,474 458,336" fill="none" stroke="#FBFAF7" stroke-width="24" stroke-linecap="round"/>
+    <circle cx="197" cy="208" r="26" fill="#D85A30"/>
+  </g>
+</svg>

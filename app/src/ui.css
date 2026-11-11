@@ -1,0 +1,124 @@
+/* MathViz 扩展：工具条与渲染卡片共用样式，全部挂在 Shadow DOM 内 */
+:host {
+  --mv-bg: #ffffff;
+  --mv-fg: #1a1a19;
+  --mv-sub: #6b6a66;
+  --mv-line: #e3e1da;
+  --mv-soft: #f4f3ee;
+  --mv-accent: #4d6bfe;
+  --mv-ok: #0f6e56;
+  --mv-err: #a32d2d;
+  font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+:host([data-theme="dark"]) {
+  --mv-bg: #22221f;
+  --mv-fg: #f1efe8;
+  --mv-sub: #a8a69f;
+  --mv-line: #3a3a36;
+  --mv-soft: #2c2c29;
+  --mv-accent: #85b7eb;
+  --mv-ok: #5dcaa5;
+  --mv-err: #f09595;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button, select, input { font: inherit; }
+
+.mv-bar { display: flex; align-items: center; gap: 8px; }
+.mv-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border: 1px solid var(--mv-line); border-radius: 999px;
+  background: var(--mv-bg); color: var(--mv-fg); cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .12); font-size: 13px;
+}
+.mv-toggle:hover { border-color: var(--mv-accent); }
+.mv-toggle > span { font-weight: 500; }
+.mv-count {
+  padding: 4px 9px; border-radius: 999px; font-size: 11px;
+  background: var(--mv-soft); color: var(--mv-sub);
+}
+.mv-panel {
+  position: absolute; left: 0; bottom: 46px; width: 296px; padding: 14px;
+  border: 1px solid var(--mv-line); border-radius: 12px;
+  background: var(--mv-bg); color: var(--mv-fg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .18);
+}
+.mv-row { display: flex; align-items: center; gap: 8px; }
+.mv-row label { font-size: 12px; color: var(--mv-sub); white-space: nowrap; }
+.mv-row select {
+  flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px;
+  border: 1px solid var(--mv-line); background: var(--mv-soft); color: var(--mv-fg);
+  font-size: 12px;
+}
+.mv-desc { margin: 9px 0 12px; font-size: 11px; color: var(--mv-sub); line-height: 1.6; }
+.mv-btns { display: flex; gap: 8px; }
+.mv-btns button, .mv-head button {
+  padding: 6px 11px; border: 1px solid var(--mv-line); border-radius: 8px;
+  background: var(--mv-soft); color: var(--mv-fg); cursor: pointer; font-size: 12px;
+}
+.mv-btns button:hover, .mv-head button:hover { border-color: var(--mv-accent); }
+.mv-btns .mv-primary { background: var(--mv-accent); border-color: var(--mv-accent); color: #fff; }
+.mv-check { display: flex; align-items: center; gap: 7px; margin-top: 12px; font-size: 11px; color: var(--mv-sub); }
+.mv-tip { margin-top: 10px; font-size: 11px; line-height: 1.6; color: var(--mv-sub); }
+.mv-toast {
+  position: absolute; left: 0; bottom: 46px; max-width: 296px; padding: 9px 12px;
+  border-radius: 8px; background: var(--mv-fg); color: var(--mv-bg); font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .2);
+}
+
+.mv-card {
+  max-width: 720px; overflow: hidden; border: 0;
+  border-radius: 8px; background: transparent; color: var(--mv-fg);
+}
+.mv-head {
+  display: flex; align-items: center; gap: 6px; padding: 7px 2px 6px;
+  font-size: 12px;
+}
+.mv-badge {
+  padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500;
+  background: var(--mv-soft); color: var(--mv-accent);
+}
+.mv-state { font-size: 11px; color: var(--mv-sub); }
+.mv-state.mv-ok { color: var(--mv-ok); }
+.mv-state.mv-err { color: var(--mv-err); }
+.mv-gap { flex: 1; }
+.mv-head button { padding: 4px 9px; }
+.mv-body { padding: 8px; }
+.mv-body iframe { display: block; width: 100%; min-height: 80px; border: 0; background: transparent; }
+.mv-src {
+  margin: 0; padding: 12px; max-height: 320px; overflow: auto;
+  border-top: 1px solid var(--mv-line); background: var(--mv-soft);
+  color: var(--mv-fg); font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-all;
+}
+
+.mv-sess { margin: 0 0 10px; font-size: 11px; line-height: 1.5; color: var(--mv-sub); }
+.mv-sess.mv-sess-on { color: var(--mv-ok); }
+
+/* 就地渲染：宿主直接挂在原来的 <pre> 里，不再套一层独立卡片 */
+:host([data-inline]) .mv-card { border: 0; border-radius: 0; background: transparent; }
+:host([data-inline]) .mv-head { border-bottom: 0; padding: 2px 2px 6px; }
+:host([data-inline]) .mv-badge { display: none; }
+:host([data-inline]) .mv-body { padding: 0; }
+
+/* 手机窄屏：工具条移到右上角（左下角会盖住输入框的按钮），面板向下展开 */
+@media (max-width: 480px) {
+  :host(.mv-toolbar-host) {
+    top: 10px !important; right: 12px !important;
+    left: auto !important; bottom: auto !important;
+  }
+  .mv-panel {
+    width: calc(100vw - 24px); max-width: 320px;
+    top: 46px; bottom: auto; right: 0; left: auto;
+  }
+  .mv-toast {
+    max-width: calc(100vw - 24px);
+    top: 46px; bottom: auto; right: 0; left: auto;
+  }
+  .mv-toggle { padding: 10px 16px; }
+  .mv-btns button, .mv-head button, .mv-row select { min-height: 38px; padding: 8px 12px; }
+  .mv-check input { width: 18px; height: 18px; }
+  .mv-card { max-width: 100%; }
+}

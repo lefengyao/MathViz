@@ -1,0 +1,240 @@
+{
+  "meta": {
+    "app": "com.mathviz.app",
+    "pid": "12837",
+    "lastUpdate": "lastUpdateTime=2026-11-11 22:17:28",
+    "at": "2026-11-11T14:19:12.967Z"
+  },
+  "url": "https://chat.deepseek.com/a/chat/s/b8636a2b-20df-4249-981a-07c4b53a6668",
+  "title": "等待数学问题 - DeepSeek",
+  "ready": "complete",
+  "injected": true,
+  "platform": "object",
+  "bridge": "object",
+  "toolbar": true,
+  "hostClass": "mv-toolbar-host",
+  "width": 360,
+  "cards": [
+    {
+      "inline": true,
+      "state": "已渲染 1 张",
+      "srcShown": false,
+      "srcText": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, title:'y = sin x 与 y = cos x', desc:'周期 2π，值域 [−1,1]'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){return Math.sin(x);}, {color:'blue', w:2.2});\nV.plot(function(x){return Math.cos(x);}, {color:'coral', w:2.2});\nV.dot([Math.PI/2,1],{color:'blue',r:3.5});\nV.dot([0,1],{color:'coral',r:3.5});\nV.label([Math.PI/2,1],'sin 峰值 (π/2, 1)',{dx:6,dy:-14,color:'blue',size:12});\nV.label([0,1],'cos 峰值 (0, 1)',{dx:-70,dy:-14,color:'coral',size:12});",
+      "iframeSrc": "https://mathviz.local/viewer.html?theme=light&id=mv2-0ba8de11",
+      "iframeHeight": "185px"
+    },
+    {
+      "inline": true,
+      "state": "已渲染 1 张",
+      "srcShown": false,
+      "srcText": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, title:'y = sin x 与 y = cos x', desc:'cos x = sin(x + π/2)：余弦曲线由正弦曲线左移 π/2 得到'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2.2});\nV.plot(function(x){ return Math.cos(x); }, {color:'coral', w:2.2});\nV.arrow([Math.PI/2,1],[0.12,1], {color:'amber', w:1.6});\nV.label([Math.PI/4,1], '左移 π/2', {dx:0, dy:-14, color:'amber', size:12});\nV.dot([Math.PI/2,1], {color:'blue', r:3.5});\nV.dot([0,1], {color:'coral', r:3.5});\nV.label([3.6,0.85], 'y = sin x', {dx:0, dy:0, color:'blue', size:13});\nV.label([3.6,-0.6], 'y = cos x', {dx:0, dy:0, color:'coral', size:13});",
+      "iframeSrc": "https://mathviz.local/viewer.html?theme=light&id=mv3-250261b5",
+      "iframeHeight": "185px"
+    },
+    {
+      "inline": true,
+      "state": "已渲染 1 张",
+      "srcShown": false,
+      "srcText": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-4,4], grid:true, axes:true, title:'y = tan x', desc:'周期 π，在 x = π/2 + kπ 处有垂直渐近线'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.tan(x); }, {color:'teal', w:2.2});\nvar a = [Math.PI/2, -Math.PI/2, 3*Math.PI/2, -3*Math.PI/2];\nfor (var i=0;i<a.length;i++){ V.seg([a[i],-4],[a[i],4],{color:'gray', w:1}); }\nV.label([Math.PI/2,-3.4],'x = π/2',{dx:6,dy:0,color:'gray',size:11});\nV.label([3*Math.PI/2,-3.4],'x = 3π/2',{dx:6,dy:0,color:'gray',size:11});",
+      "iframeSrc": "https://mathviz.local/viewer.html?theme=light&id=mv4-35cc7a7c",
+      "iframeHeight": "185px"
+    },
+    {
+      "inline": true,
+      "state": "已渲染 1 张",
+      "srcShown": false,
+      "srcText": "var V = MK.frame({box:[40,26,600,330], x:[-1.7,1.7], y:[-1.6,1.6], equal:true, grid:false, axes:true, title:'单位圆上的正弦线与余弦线', desc:'P = (cos θ, sin θ)'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.circle([0,0],1,{color:'blue', w:2});\nvar t = Math.PI/3;\nvar P = [Math.cos(t), Math.sin(t)];\nV.seg([0,0],P,{color:'gray', w:1.4});\nV.seg([P[0],0],P,{color:'coral', w:2.4});\nV.seg([0,0],[P[0],0],{color:'teal', w:2.4});\nV.arc([0,0],0.3,0,t,{color:'amber', w:1.6});\nV.dot(P,{color:'blue',r:4});\nV.dot([0,0],{color:'gray',r:3});\nV.label(P,'P',{dx:8,dy:-6,color:'blue',size:13});\nV.label([0.36,0.12],'θ',{dx:0,dy:0,color:'amber',size:12});\nV.label([P[0]+0.06, P[1]/2],'sin θ',{dx:8,dy:0,color:'coral',size:12});\nV.label([P[0]/2,-0.16],'cos θ',{dx:-10,dy:10,color:'teal',size:12});",
+      "iframeSrc": "https://mathviz.local/viewer.html?theme=light&id=mv5-971d41ba",
+      "iframeHeight": "185px"
+    },
+    {
+      "inline": true,
+      "state": "已渲染 1 张",
+      "srcShown": false,
+      "srcText": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, title:'y = sin x 与 y = cos x', desc:'cos x = sin(x + π/2)：余弦曲线就是正弦曲线左移 π/2'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2.2});\nV.plot(function(x){ return Math.cos(x); }, {color:'coral', w:2.2});\nV.arrow([Math.PI/2,1],[0.14,1], {color:'amber', w:1.6});\nV.label([0.9,1.06], '左移 π/2', {dx:-20, dy:-14, color:'amber', size:12});\nV.dot([Math.PI/2,1], {color:'blue', r:3.5});\nV.dot([0,1], {color:'coral', r:3.5});\nV.label([2.6,0.82], 'y = sin x', {dx:0, dy:0, color:'blue', size:13});\nV.label([1.9,-0.72], 'y = cos x', {dx:0, dy:0, color:'coral', size:13});",
+      "iframeSrc": "https://mathviz.local/viewer.html?theme=light&id=mv6-bd041899",
+      "iframeHeight": "197px"
+    },
+    {
+      "inline": true,
+      "state": "已渲染 1 张",
+      "srcShown": false,
+      "srcText": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-4,4], grid:true, axes:true, title:'y = tan x', desc:'周期 π，在 x = π/2 + kπ 处有垂直渐近线'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.tan(x); }, {color:'teal', w:2.2});\nvar a = [-3*Math.PI/2, -Math.PI/2, Math.PI/2, 3*Math.PI/2];\nfor (var i=0;i<a.length;i++){ V.seg([a[i],-4],[a[i],4], {color:'gray', w:1}); }\nV.label([Math.PI/2,-3.5], 'x = π/2', {dx:6, dy:0, color:'gray', size:11});\nV.label([3*Math.PI/2,-3.5], 'x = 3π/2', {dx:6, dy:0, color:'gray', size:11});\nV.label([-2.6,2.3], 'y = tan x', {dx:0, dy:0, color:'teal', size:13});",
+      "iframeSrc": "https://mathviz.local/viewer.html?theme=light&id=mv7-7dcf3328",
+      "iframeHeight": "197px"
+    },
+    {
+      "inline": true,
+      "state": "已渲染 1 张",
+      "srcShown": false,
+      "srcText": "var V = MK.frame({box:[40,26,600,330], x:[-4.6,4.6], y:[-2.4,2.4], grid:true, axes:true, title:'振幅与周期：y = A·sin(ωx)', desc:'A 拉伸振幅，ω 压缩周期 T = 2π/ω'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2});\nV.plot(function(x){ return 2*Math.sin(x); }, {color:'teal', w:2});\nV.plot(function(x){ return Math.sin(2*x); }, {color:'amber', w:2});\nV.label([3.0,0.62], 'y = sin x', {dx:0, dy:0, color:'blue', size:12});\nV.label([2.9,1.98], 'y = 2sin x', {dx:0, dy:0, color:'teal', size:12});\nV.label([0.95,-1.95], 'y = sin 2x', {dx:0, dy:0, color:'amber', size:12});",
+      "iframeSrc": "https://mathviz.local/viewer.html?theme=light&id=mv8-b4fe52e2",
+      "iframeHeight": "197px"
+    },
+    {
+      "inline": true,
+      "state": "已渲染 1 张",
+      "srcShown": false,
+      "srcText": "var V = MK.frame({box:[40,26,600,330], x:[-1.7,1.7], y:[-1.55,1.55], equal:true, grid:false, axes:true, title:'单位圆上的正弦线与余弦线', desc:'P = (cos θ, sin θ)'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.circle([0,0],1, {color:'blue', w:2});\nvar t = Math.PI/3;\nvar P = [Math.cos(t), Math.sin(t)];\nV.seg([0,0], P, {color:'gray', w:1.4});\nV.seg([P[0],0], P, {color:'coral', w:2.6});\nV.seg([0,0], [P[0],0], {color:'teal', w:2.6});\nV.arc([0,0], 0.32, 0, t, {color:'amber', w:1.6});\nV.dot(P, {color:'blue', r:4});\nV.dot([0,0], {color:'gray', r:3});\nV.label(P, 'P', {dx:9, dy:-8, color:'blue', size:13});\nV.label([0.30,0.14], 'θ', {dx:0, dy:0, color:'amber', size:12});\nV.label([P[0], P[1]/2], 'sin θ', {dx:10, dy:0, color:'coral', size:12});\nV.label([P[0]/2, -0.18], 'cos θ', {dx:-14, dy:12, color:'teal', size:12});",
+      "iframeSrc": "https://mathviz.local/viewer.html?theme=light&id=mv9-675a7d8d",
+      "iframeHeight": "197px"
+    }
+  ],
+  "pres": [
+    {
+      "cls": "",
+      "parentCls": "md-code-block md-code-block-light",
+      "parentText": "mathviz复制下载var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, ",
+      "len": 553,
+      "head": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, title:'y = sin x 与 y = cos x', desc:'周期 2π，值域 [−1,1]'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){return Math.sin(x);}, {color:'blue', w:2.2});\nV.plot(function(x){return Math.cos(x);}, {color:'coral', w",
+      "tail": "cos(x);}, {color:'coral', w:2.2});\nV.dot([Math.PI/2,1],{color:'blue',r:3.5});\nV.dot([0,1],{color:'coral',r:3.5});\nV.label([Math.PI/2,1],'sin 峰值 (π/2, 1)',{dx:6,dy:-14,color:'blue',size:12});\nV.label([0,1],'cos 峰值 (0, 1)',{dx:-70,dy:-14,color:'coral',size:12});",
+      "full": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, title:'y = sin x 与 y = cos x', desc:'周期 2π，值域 [−1,1]'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){return Math.sin(x);}, {color:'blue', w:2.2});\nV.plot(function(x){return Math.cos(x);}, {color:'coral', w:2.2});\nV.dot([Math.PI/2,1],{color:'blue',r:3.5});\nV.dot([0,1],{color:'coral',r:3.5});\nV.label([Math.PI/2,1],'sin 峰值 (π/2, 1)',{dx:6,dy:-14,color:'blue',size:12});\nV.label([0,1],'cos 峰值 (0, 1)',{dx:-70,dy:-14,color:'coral',size:12});",
+      "hasCard": true,
+      "childTags": [
+        "SPAN.",
+        "SPAN.",
+        "SPAN.",
+        "SPAN."
+      ]
+    },
+    {
+      "cls": "",
+      "parentCls": "md-code-block md-code-block-light",
+      "parentText": "mathviz复制下载var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, ",
+      "len": 712,
+      "head": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, title:'y = sin x 与 y = cos x', desc:'cos x = sin(x + π/2)：余弦曲线由正弦曲线左移 π/2 得到'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2.2});\nV.plot(function(x){ return Math.",
+      "tail": " dy:-14, color:'amber', size:12});\nV.dot([Math.PI/2,1], {color:'blue', r:3.5});\nV.dot([0,1], {color:'coral', r:3.5});\nV.label([3.6,0.85], 'y = sin x', {dx:0, dy:0, color:'blue', size:13});\nV.label([3.6,-0.6], 'y = cos x', {dx:0, dy:0, color:'coral', size:13});",
+      "full": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, title:'y = sin x 与 y = cos x', desc:'cos x = sin(x + π/2)：余弦曲线由正弦曲线左移 π/2 得到'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2.2});\nV.plot(function(x){ return Math.cos(x); }, {color:'coral', w:2.2});\nV.arrow([Math.PI/2,1],[0.12,1], {color:'amber', w:1.6});\nV.label([Math.PI/4,1], '左移 π/2', {dx:0, dy:-14, color:'amber', size:12});\nV.dot([Math.PI/2,1], {color:'blue', r:3.5});\nV.dot([0,1], {color:'coral', r:3.5});\nV.label([3.6,0.85], 'y = sin x', {dx:0, dy:0, color:'blue', size:13});\nV.label([3.6,-0.6], 'y = cos x', {dx:0, dy:0, color:'coral', size:13});",
+      "hasCard": true,
+      "childTags": [
+        "SPAN.",
+        "SPAN.",
+        "SPAN.",
+        "SPAN."
+      ]
+    },
+    {
+      "cls": "",
+      "parentCls": "md-code-block md-code-block-light",
+      "parentText": "mathviz复制下载var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-4,4], grid:true, axes:true, titl",
+      "len": 541,
+      "head": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-4,4], grid:true, axes:true, title:'y = tan x', desc:'周期 π，在 x = π/2 + kπ 处有垂直渐近线'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.tan(x); }, {color:'teal', w:2.2});\nvar a = [Math.PI/2, -Math.PI/2, 3*Math.PI/2, -3*Math.PI/2];\n",
+      "tail": "Math.PI/2, 3*Math.PI/2, -3*Math.PI/2];\nfor (var i=0;i<a.length;i++){ V.seg([a[i],-4],[a[i],4],{color:'gray', w:1}); }\nV.label([Math.PI/2,-3.4],'x = π/2',{dx:6,dy:0,color:'gray',size:11});\nV.label([3*Math.PI/2,-3.4],'x = 3π/2',{dx:6,dy:0,color:'gray',size:11});",
+      "full": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-4,4], grid:true, axes:true, title:'y = tan x', desc:'周期 π，在 x = π/2 + kπ 处有垂直渐近线'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.tan(x); }, {color:'teal', w:2.2});\nvar a = [Math.PI/2, -Math.PI/2, 3*Math.PI/2, -3*Math.PI/2];\nfor (var i=0;i<a.length;i++){ V.seg([a[i],-4],[a[i],4],{color:'gray', w:1}); }\nV.label([Math.PI/2,-3.4],'x = π/2',{dx:6,dy:0,color:'gray',size:11});\nV.label([3*Math.PI/2,-3.4],'x = 3π/2',{dx:6,dy:0,color:'gray',size:11});",
+      "hasCard": true,
+      "childTags": [
+        "SPAN.",
+        "SPAN.",
+        "SPAN.",
+        "SPAN."
+      ]
+    },
+    {
+      "cls": "",
+      "parentCls": "md-code-block md-code-block-light",
+      "parentText": "mathviz复制下载var V = MK.frame({box:[40,26,600,330], x:[-4.6,4.6], y:[-2.4,2.4], grid:true, axes:true, ",
+      "len": 472,
+      "head": "var V = MK.frame({box:[40,26,600,330], x:[-4.6,4.6], y:[-2.4,2.4], grid:true, axes:true, title:'振幅与周期：y = A sin(ωx)', desc:'A 改变振幅，ω 改变周期 T = 2π/ω'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2});\nV.plot(function(x){ return 2*Math.sin(x); }, {color:'",
+      "tail": "ction(x){ return Math.sin(x); }, {color:'blue', w:2});\nV.plot(function(x){ return 2*Math.sin(x); }, {color:'teal', w:2});\nV.plot(function(x){ return Math.sin(2*x); }, {color:'amber', w:2});\nV.label([3.3,1.35],'y = 2sin x',{dx:0,dy:0,color:'teal',size:12});\n...",
+      "full": "var V = MK.frame({box:[40,26,600,330], x:[-4.6,4.6], y:[-2.4,2.4], grid:true, axes:true, title:'振幅与周期：y = A sin(ωx)', desc:'A 改变振幅，ω 改变周期 T = 2π/ω'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2});\nV.plot(function(x){ return 2*Math.sin(x); }, {color:'teal', w:2});\nV.plot(function(x){ return Math.sin(2*x); }, {color:'amber', w:2});\nV.label([3.3,1.35],'y = 2sin x',{dx:0,dy:0,color:'teal',size:12});\n...",
+      "hasCard": false,
+      "childTags": [
+        "SPAN.",
+        "SPAN.",
+        "SPAN.",
+        "SPAN."
+      ]
+    },
+    {
+      "cls": "",
+      "parentCls": "md-code-block md-code-block-light",
+      "parentText": "mathviz复制下载var V = MK.frame({box:[40,26,600,330], x:[-1.7,1.7], y:[-1.6,1.6], equal:true, grid:false",
+      "len": 780,
+      "head": "var V = MK.frame({box:[40,26,600,330], x:[-1.7,1.7], y:[-1.6,1.6], equal:true, grid:false, axes:true, title:'单位圆上的正弦线与余弦线', desc:'P = (cos θ, sin θ)'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.circle([0,0],1,{color:'blue', w:2});\nvar t = Math.PI/3;\nvar P = [Math.cos(t), Math.sin(t)];\nV.seg([0,0],P,{color:'",
+      "tail": "y',r:3});\nV.label(P,'P',{dx:8,dy:-6,color:'blue',size:13});\nV.label([0.36,0.12],'θ',{dx:0,dy:0,color:'amber',size:12});\nV.label([P[0]+0.06, P[1]/2],'sin θ',{dx:8,dy:0,color:'coral',size:12});\nV.label([P[0]/2,-0.16],'cos θ',{dx:-10,dy:10,color:'teal',size:12});",
+      "full": "var V = MK.frame({box:[40,26,600,330], x:[-1.7,1.7], y:[-1.6,1.6], equal:true, grid:false, axes:true, title:'单位圆上的正弦线与余弦线', desc:'P = (cos θ, sin θ)'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.circle([0,0],1,{color:'blue', w:2});\nvar t = Math.PI/3;\nvar P = [Math.cos(t), Math.sin(t)];\nV.seg([0,0],P,{color:'gray', w:1.4});\nV.seg([P[0],0],P,{color:'coral', w:2.4});\nV.seg([0,0],[P[0],0],{color:'teal', w:2.4});\nV.arc([0,0],0.3,0,t,{color:'amber', w:1.6});\nV.dot(P,{color:'blue',r:4});\nV.dot([0,0],{color:'gray',r:3});\nV.label(P,'P',{dx:8,dy:-6,color:'blue',size:13});\nV.label([0.36,0.12],'θ',{dx:0,dy:0,color:'amber',size:12});\nV.label([P[0]+0.06, P[1]/2],'sin θ',{dx:8,dy:0,color:'coral',size:12});\nV.label([P[0]/2,-0.16],'cos θ',{dx:-10,dy:10,color:'teal',size:12});",
+      "hasCard": true,
+      "childTags": [
+        "SPAN.",
+        "SPAN.",
+        "SPAN.",
+        "SPAN."
+      ]
+    },
+    {
+      "cls": "",
+      "parentCls": "md-code-block md-code-block-light",
+      "parentText": "mathviz复制下载var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, ",
+      "len": 710,
+      "head": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, title:'y = sin x 与 y = cos x', desc:'cos x = sin(x + π/2)：余弦曲线就是正弦曲线左移 π/2'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2.2});\nV.plot(function(x){ return Math.co",
+      "tail": "dy:-14, color:'amber', size:12});\nV.dot([Math.PI/2,1], {color:'blue', r:3.5});\nV.dot([0,1], {color:'coral', r:3.5});\nV.label([2.6,0.82], 'y = sin x', {dx:0, dy:0, color:'blue', size:13});\nV.label([1.9,-0.72], 'y = cos x', {dx:0, dy:0, color:'coral', size:13});",
+      "full": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-1.7,1.7], grid:true, axes:true, title:'y = sin x 与 y = cos x', desc:'cos x = sin(x + π/2)：余弦曲线就是正弦曲线左移 π/2'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2.2});\nV.plot(function(x){ return Math.cos(x); }, {color:'coral', w:2.2});\nV.arrow([Math.PI/2,1],[0.14,1], {color:'amber', w:1.6});\nV.label([0.9,1.06], '左移 π/2', {dx:-20, dy:-14, color:'amber', size:12});\nV.dot([Math.PI/2,1], {color:'blue', r:3.5});\nV.dot([0,1], {color:'coral', r:3.5});\nV.label([2.6,0.82], 'y = sin x', {dx:0, dy:0, color:'blue', size:13});\nV.label([1.9,-0.72], 'y = cos x', {dx:0, dy:0, color:'coral', size:13});",
+      "hasCard": true,
+      "childTags": [
+        "SPAN.",
+        "SPAN.",
+        "SPAN.",
+        "SPAN."
+      ]
+    },
+    {
+      "cls": "",
+      "parentCls": "md-code-block md-code-block-light",
+      "parentText": "mathviz复制下载var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-4,4], grid:true, axes:true, titl",
+      "len": 623,
+      "head": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-4,4], grid:true, axes:true, title:'y = tan x', desc:'周期 π，在 x = π/2 + kπ 处有垂直渐近线'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.tan(x); }, {color:'teal', w:2.2});\nvar a = [-3*Math.PI/2, -Math.PI/2, Math.PI/2, 3*Math.PI/2];\n",
+      "tail": "4],[a[i],4], {color:'gray', w:1}); }\nV.label([Math.PI/2,-3.5], 'x = π/2', {dx:6, dy:0, color:'gray', size:11});\nV.label([3*Math.PI/2,-3.5], 'x = 3π/2', {dx:6, dy:0, color:'gray', size:11});\nV.label([-2.6,2.3], 'y = tan x', {dx:0, dy:0, color:'teal', size:13});",
+      "full": "var V = MK.frame({box:[40,26,600,330], x:[-6.6,6.6], y:[-4,4], grid:true, axes:true, title:'y = tan x', desc:'周期 π，在 x = π/2 + kπ 处有垂直渐近线'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.tan(x); }, {color:'teal', w:2.2});\nvar a = [-3*Math.PI/2, -Math.PI/2, Math.PI/2, 3*Math.PI/2];\nfor (var i=0;i<a.length;i++){ V.seg([a[i],-4],[a[i],4], {color:'gray', w:1}); }\nV.label([Math.PI/2,-3.5], 'x = π/2', {dx:6, dy:0, color:'gray', size:11});\nV.label([3*Math.PI/2,-3.5], 'x = 3π/2', {dx:6, dy:0, color:'gray', size:11});\nV.label([-2.6,2.3], 'y = tan x', {dx:0, dy:0, color:'teal', size:13});",
+      "hasCard": true,
+      "childTags": [
+        "SPAN.",
+        "SPAN.",
+        "SPAN.",
+        "SPAN."
+      ]
+    },
+    {
+      "cls": "",
+      "parentCls": "md-code-block md-code-block-light",
+      "parentText": "mathviz复制下载var V = MK.frame({box:[40,26,600,330], x:[-4.6,4.6], y:[-2.4,2.4], grid:true, axes:true, ",
+      "len": 619,
+      "head": "var V = MK.frame({box:[40,26,600,330], x:[-4.6,4.6], y:[-2.4,2.4], grid:true, axes:true, title:'振幅与周期：y = A·sin(ωx)', desc:'A 拉伸振幅，ω 压缩周期 T = 2π/ω'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2});\nV.plot(function(x){ return 2*Math.sin(x); }, {color:'",
+      "tail": "n Math.sin(2*x); }, {color:'amber', w:2});\nV.label([3.0,0.62], 'y = sin x', {dx:0, dy:0, color:'blue', size:12});\nV.label([2.9,1.98], 'y = 2sin x', {dx:0, dy:0, color:'teal', size:12});\nV.label([0.95,-1.95], 'y = sin 2x', {dx:0, dy:0, color:'amber', size:12});",
+      "full": "var V = MK.frame({box:[40,26,600,330], x:[-4.6,4.6], y:[-2.4,2.4], grid:true, axes:true, title:'振幅与周期：y = A·sin(ωx)', desc:'A 拉伸振幅，ω 压缩周期 T = 2π/ω'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.plot(function(x){ return Math.sin(x); }, {color:'blue', w:2});\nV.plot(function(x){ return 2*Math.sin(x); }, {color:'teal', w:2});\nV.plot(function(x){ return Math.sin(2*x); }, {color:'amber', w:2});\nV.label([3.0,0.62], 'y = sin x', {dx:0, dy:0, color:'blue', size:12});\nV.label([2.9,1.98], 'y = 2sin x', {dx:0, dy:0, color:'teal', size:12});\nV.label([0.95,-1.95], 'y = sin 2x', {dx:0, dy:0, color:'amber', size:12});",
+      "hasCard": true,
+      "childTags": [
+        "SPAN.",
+        "SPAN.",
+        "SPAN.",
+        "SPAN."
+      ]
+    },
+    {
+      "cls": "",
+      "parentCls": "md-code-block md-code-block-light",
+      "parentText": "mathviz复制下载var V = MK.frame({box:[40,26,600,330], x:[-1.7,1.7], y:[-1.55,1.55], equal:true, grid:fal",
+      "len": 815,
+      "head": "var V = MK.frame({box:[40,26,600,330], x:[-1.7,1.7], y:[-1.55,1.55], equal:true, grid:false, axes:true, title:'单位圆上的正弦线与余弦线', desc:'P = (cos θ, sin θ)'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.circle([0,0],1, {color:'blue', w:2});\nvar t = Math.PI/3;\nvar P = [Math.cos(t), Math.sin(t)];\nV.seg([0,0], P, {co",
+      "tail": "(P, 'P', {dx:9, dy:-8, color:'blue', size:13});\nV.label([0.30,0.14], 'θ', {dx:0, dy:0, color:'amber', size:12});\nV.label([P[0], P[1]/2], 'sin θ', {dx:10, dy:0, color:'coral', size:12});\nV.label([P[0]/2, -0.18], 'cos θ', {dx:-14, dy:12, color:'teal', size:12});",
+      "full": "var V = MK.frame({box:[40,26,600,330], x:[-1.7,1.7], y:[-1.55,1.55], equal:true, grid:false, axes:true, title:'单位圆上的正弦线与余弦线', desc:'P = (cos θ, sin θ)'});\ndocument.getElementById(\"fig\").appendChild(V.svg);\nV.circle([0,0],1, {color:'blue', w:2});\nvar t = Math.PI/3;\nvar P = [Math.cos(t), Math.sin(t)];\nV.seg([0,0], P, {color:'gray', w:1.4});\nV.seg([P[0],0], P, {color:'coral', w:2.6});\nV.seg([0,0], [P[0],0], {color:'teal', w:2.6});\nV.arc([0,0], 0.32, 0, t, {color:'amber', w:1.6});\nV.dot(P, {color:'blue', r:4});\nV.dot([0,0], {color:'gray', r:3});\nV.label(P, 'P', {dx:9, dy:-8, color:'blue', size:13});\nV.label([0.30,0.14], 'θ', {dx:0, dy:0, color:'amber', size:12});\nV.label([P[0], P[1]/2], 'sin θ', {dx:10, dy:0, color:'coral', size:12});\nV.label([P[0]/2, -0.18], 'cos θ', {dx:-14, dy:12, color:'teal', size:12});",
+      "hasCard": true,
+      "childTags": [
+        "SPAN.",
+        "SPAN.",
+        "SPAN.",
+        "SPAN."
+      ]
+    }
+  ],
+  "fences": [
+    {
+      "tag": "SPAN",
+      "text": "【MathViz 作图模式】\n你正在一个装了 MathViz 渲染扩展的网页里回答。需要配图时，严格按下面的格式输出。\n不要向用户复述本协议，不要把协议内容写进回答。\n\n## 唯一允许的图形输出格式\n一个且仅一个以下面这行开头的代码块：` ```mathviz `（三个反引号加 mathviz）。代码块内是可直接执行的 JavaScript，或者一个完整的手写 `<svg viewBox=\"0 0 680 H\">`。代码块外照常用中文写"
+    },
+    {
+      "tag": "DIV",
+      "text": "【MathViz 作图模式】\n你正在一个装了 MathViz 渲染扩展的网页里回答。需要配图时，严格按下面的格式输出。\n不要向用户复述本协议，不要把协议内容写进回答。\n\n## 唯一允许的图形输出格式\n一个且仅一个以下面这行开头的代码块：` ```mathviz `（三个反引号加 mathviz）。代码块内是可直接执行的 JavaScript，或者一个完整的手写 `<svg viewBox=\"0 0 680 H\">`。代码块外照常用中文写"
+    }
+  ],
+  "bodyHead": "等待数学问题\n【MathViz 作图模式】\n你正在一个装了 MathViz 渲染扩展的网页里回答。需要配图时，严格按下面的格式输出。\n不要向用户复述本协议，不要把协议内容写进回答。\n\n## 唯一允许的图形输出格式\n一个且仅一个以下面这行开头的代码块：` ```mathviz `（三个反引号加 mathviz）。代码块内是可直接执行的 JavaScript，或者一个完整的手写 `<svg viewBox=\"0 0 680 H\">`。代码块外照常用中文写推导与结论。\n\n## 硬性约束\n1. 代码块内不要写 `<scri"
+}

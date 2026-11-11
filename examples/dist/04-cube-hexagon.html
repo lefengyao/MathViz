@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>正方体的正六边形截面</title>
+<style>
+  :root{
+    --color-background-primary:#ffffff; --color-text-primary:#1a1a19;
+    --font-sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-serif:Georgia,"Times New Roman",serif;
+  }
+  body{margin:0;padding:28px 20px;background:#fff;color:#1a1a19;font-family:var(--font-sans)}
+  figure{max-width:680px;margin:0 auto}
+  figcaption{font-size:13px;color:#5F5E5A;line-height:1.7;margin-top:12px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#F1EFE8;padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+<figure>
+  <div id="fig"></div>
+  <figcaption>
+    平面 <code>x + y + z = 3</code> 截棱长为 2 的正方体，截面为正六边形——六个顶点分别是六条棱的中点。
+    拖动图形可旋转视角。
+  </figcaption>
+</figure>
+
+<script>
+(function (g) {
+  "use strict";
+
+  var NS = "http://www.w3.org/2000/svg";
+
+  var R = {
+    blue: ["#E6F1FB", "#B5D4F4", "#85B7EB", "#378ADD", "#185FA5", "#0C447C"],
+    coral: ["#FAECE7", "#F5C4B3", "#F0997B", "#D85A30", "#993C1D", "#712B13"],
+    teal: ["#E1F5EE", "#9FE1CB", "#5DCAA5", "#1D9E75", "#0F6E56", "#085041"],
+    amber: ["#FAEEDA", "#FAC775", "#EF9F27", "#BA7517", "#854F0B", "#633806"],
+    purple: ["#EEEDFE", "#CECBF6", "#AFA9EC", "#7F77DD", "#534AB7", "#3C3489"],
+    red: ["#FCEBEB", "#F7C1C1", "#F09595", "#E24B4A", "#A32D2D", "#791F1F"],
+    green: ["#EAF3DE", "#C0DD97", "#97C459", "#639922", "#3B6D11", "#27500A"],
+    pink: ["#FBEAF0", "#F4C0D1", "#ED93B1", "#D4537E", "#993556", "#72243E"],
+    gray: ["#F1EFE8", "#D3D1C7", "#B4B2A9", "#888780", "#5F5E5A", "#444441"]
+  };
+
+  function isDark() {
+    try {
+      var s = getComputedStyle(document.documentElement);
+      var bg = s.getPropertyValue("--color-background-primary").trim();
+      if (bg && bg.indexOf("oklch") < 0 && bg.indexOf("lab") < 0) {
+        var m = bg.match(/[\d.]+/g);
+        if (m && m.length >= 3) {
+          return (+m[0] * 0.299 + +m[1] * 0.587 + +m[2] * 0.114) < 140;
+        }
+      }
+      var mc = s.getPropertyValue("--color-text-primary").trim();
+      if (mc && mc.indexOf("oklch") < 0) {
+        var n = mc.match(/[\d.]+/g);
+        if (n && n.length >= 3) {
+          return (+n[0] * 0.299 + +n[1] * 0.587 + +n[2] * 0.114) > 150;
+        }
+      }
+    } catch (e) {}
+    return matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  var D = isDark();
+
+  function ink() { return D ? "#B4B2A9" : "#5F5E5A"; }
+  function faint() { return D ? "#55534E" : "#D3D1C7"; }
+  function bgFill() {
+    try {
+      var v = getComputedStyle(document.documentElement)
+        .getPropertyValue("--color-background-primary").trim();
+      if (v) return v;
+    } catch (e) {}
+    return D ? "#1a1a19" : "#ffffff";
+  }
+  function accent(name) { var r = R[name] || R.blue; return D ? r[2] : r[4]; }
+  function tint(name) { var r = R[name] || R.blue; return D ? r[5] : r[0]; }
+  function strong(name) { var r = R[name] || R.blue; return D ? r[1] : r[5]; }
+
+  function mk(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    if (attrs) for (var k in attrs) {
+      if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]);
+    }
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  function txt(parent, x, y, s, o) {
+    o = o || {};
+    var t = mk("text", {
+      x: x, y: y,
+      fill: o.fill || ink(),
+      "font-size": o.size || 12,
+      "font-family": o.mono ? "ui-monospace,SFMono-Regular,Menlo,monospace" : "var(--font-sans,system-ui,sans-serif)",
+      "font-weight": o.weight || 400,
+      "font-style": o.italic ? "italic" : null,
+      "text-anchor": o.anchor || "start",
+      "dominant-baseline": o.baseline || "auto"
+    }, parent);
+    if (o.serif) t.setAttribute("font-family", "var(--font-serif,Georgia,serif)");
+    if (o.halo !== false) {
+      t.setAttribute("paint-order", "stroke");
+      t.setAttribute("stroke", o.haloColor || (D ? "#141413" : "#ffffff"));
+      t.setAttribute("stroke-width", o.haloW || 3);
+      t.setAttribute("stroke-linejoin", "round");
+    }
+    t.textContent = s;
+    return t;
+  }
+
+  function tw(s, fs) {
+    var w = 0;
+    for (var i = 0; i < s.length; i++) w += s.charCodeAt(i) > 255 ? fs : fs * 0.56;
+    return w;
+  }
+
+  function niceStep(span, target) {
+    var raw = Math.abs(span) / (target || 8);
+    if (!isFinite(raw) || raw <= 0) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(raw)));
+    var m = raw / p;
+    return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+  }
+
+  function fmt(v, step) {
+    if (Math.abs(v) < 1e-9) return "0";
+    var dec = step < 1 ? Math.min(4, Math.ceil(-Math.log10(step))) : 0;
+    var s = Math.abs(v) >= 1e4 || Math.abs(v) < 1e-3 ? v.toExponential(1) : v.toFixed(dec);
+    return s.replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+  }
+
+  function sub(a, b) { return [a[0] - b[0], a[1] - b[1]]; }
+  function add(a, b) { return [a[0] + b[0], a[1] + b[1]]; }
+  function mul(a, k) { return [a[0] * k, a[1] * k]; }
+  function len(a) { return Math.hypot(a[0], a[1]); }
+  function unit(a) { var l = len(a) || 1; return [a[0] / l, a[1] / l]; }
+  function perp(a) { return [-a[1], a[0]]; }
+
+  function Frame(o) {
+    o = o || {};
+    var box = o.box || [40, 30, 600, 340];
+    var bx = box[0], by = box[1], bw = box[2], bh = box[3];
+    var xr = o.x || [-5, 5];
+    var yr = o.y || [-3, 3];
+    var sx = bw / (xr[1] - xr[0]);
+    var sy = bh / (yr[1] - yr[0]);
+    if (o.equal !== false) { var s0 = Math.min(sx, sy); sx = sy = s0; }
+    var dw = (xr[1] - xr[0]) * sx;
+    var dh = (yr[1] - yr[0]) * sy;
+    var ox = bx + (bw - dw) / 2;
+    var oy = by + (bh - dh) / 2;
+
+    var W = o.w || 680;
+    var H = o.h || Math.ceil(by + bh + 28);
+
+    var svg = mk("svg", {
+      viewBox: "0 0 " + W + " " + H,
+      width: "100%",
+      role: "img",
+      xmlns: NS
+    });
+    svg.style.display = "block";
+    svg.style.overflow = "visible";
+
+    var title = mk("title", null, svg);
+    title.textContent = o.title || "数学图形";
+    var desc = mk("desc", null, svg);
+    desc.textContent = o.desc || "";
+
+    var defs = mk("defs", null, svg);
+    var cid = "clip" + Math.random().toString(36).slice(2, 8);
+    var cp = mk("clipPath", { id: cid }, defs);
+    mk("rect", { x: ox, y: oy, width: dw, height: dh }, cp);
+
+    var stage = mk("g", { "clip-path": "url(#" + cid + ")" }, svg);
+    var top = mk("g", null, svg);
+
+    function px(p) {
+      return [ox + (p[0] - xr[0]) * sx, oy + dh - (p[1] - yr[0]) * sy];
+    }
+    function up(p) {
+      return [xr[0] + (p[0] - ox) / sx, yr[0] + (dh - (p[1] - oy)) / sy];
+    }
+
+    var V = {
+      svg: svg, g: stage, over: top, dark: D,
+      xr: xr, yr: yr, px: px, up: up, sx: sx, sy: sy,
+      box: { x: ox, y: oy, w: dw, h: dh },
+      W: W, H: H,
+      color: accent, tint: tint, strong: strong, ink: ink,
+      _mk: mk, _txt: txt
+    };
+
+    V.grid = function (opt) {
+      opt = opt || {};
+      var c = opt.color || faint();
+      var op = opt.opacity || (D ? 0.55 : 0.9);
+      var stx = niceStep(xr[1] - xr[0], opt.nx || 10);
+      var sty = niceStep(yr[1] - yr[0], opt.ny || 8);
+      var gg = mk("g", { stroke: c, "stroke-width": 0.5, opacity: op }, stage);
+      var i, x, y;
+      for (x = Math.ceil(xr[0] / stx) * stx; x <= xr[1] + 1e-9; x += stx) {
+        var p1 = px([x, yr[0]]), p2 = px([x, yr[1]]);
+        mk("line", { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] }, gg);
+      }
+      for (y = Math.ceil(yr[0] / sty) * sty; y <= yr[1] + 1e-9; y += sty) {
+        var q1 = px([xr[0], y]), q2 = px([xr[1], y]);
+        mk("line", { x1: q1[0], y1: q1[1], x2: q2[0], y2: q2[1] }, gg);
+      }
+      return V;
+    };
+
+    V.axes = function (opt) {
+      opt = opt || {};
+      var c = opt.color || ink();
+      var g0 = mk("g", { stroke: c, "stroke-width": 1.2, fill: "none" }, top);
+      var x0 = Math.min(Math.max(0, xr[0]), xr[1]);
+      var y0 = Math.min(Math.max(0, yr[0]), yr[1]);
+      var ax = px([xr[0], y0]), bx2 = px([xr[1], y0]);
+      var ay = px([x0, yr[0]]), by2 = px([x0, yr[1]]);
+      mk("line", { x1: ax[0], y1: ax[1], x2: bx2[0] - 6, y2: bx2[1] }, g0);
+      mk("line", { x1: ay[0], y1: ay[1] + 6, x2: by2[0], y2: by2[1] }, g0);
+      mk("path", {
+        d: "M" + bx2[0] + " " + bx2[1] + "l-7 -3.2v6.4z",
+        fill: c, stroke: "none"
+      }, g0);
+      mk("path", {
+        d: "M" + by2[0] + " " + by2[1] + "l-3.2 7h6.4z",
+        fill: c, stroke: "none"
+      }, g0);
+
+      var stx = niceStep(xr[1] - xr[0], opt.nx || 10);
+      var sty = niceStep(yr[1] - yr[0], opt.ny || 8);
+      var lab = mk("g", null, top);
+      var x, y;
+      var xEnd = xr[1], yEnd = yr[1];
+      for (x = Math.ceil(xr[0] / stx) * stx; x <= xr[1] + 1e-9; x += stx) {
+        if (Math.abs(x) < 1e-9) continue;
+        if (Math.abs(x - xEnd) < Math.abs(stx) * 0.45) continue;
+        var t1 = px([x, y0]);
+        mk("line", { x1: t1[0], y1: t1[1] - 4, x2: t1[0], y2: t1[1] + 4, stroke: c, "stroke-width": 1.2 }, top);
+        txt(lab, t1[0], t1[1] + 17, fmt(x, stx), { size: 11, fill: ink(), anchor: "middle" });
+      }
+      for (y = Math.ceil(yr[0] / sty) * sty; y <= yr[1] + 1e-9; y += sty) {
+        if (Math.abs(y) < 1e-9) continue;
+        if (Math.abs(y - yEnd) < Math.abs(sty) * 0.45) continue;
+        var t2 = px([x0, y]);
+        mk("line", { x1: t2[0] - 4, y1: t2[1], x2: t2[0] + 4, y2: t2[1], stroke: c, "stroke-width": 1.2 }, top);
+        txt(lab, t2[0] - 8, t2[1] + 4, fmt(y, sty), { size: 11, fill: ink(), anchor: "end" });
+      }
+      if (xr[0] <= 0 && xr[1] >= 0 && yr[0] <= 0 && yr[1] >= 0) {
+        var o0 = px([0, 0]);
+        txt(lab, o0[0] - 7, o0[1] + 15, "O", { size: 12, fill: ink(), anchor: "end" });
+      }
+      var xl = px([xr[1], y0]);
+      txt(lab, xl[0] + 2, xl[1] + 19, opt.xlabel || "x", { size: 13, fill: ink(), italic: true, anchor: "end", serif: true });
+      var yl = px([x0, yr[1]]);
+      txt(lab, yl[0] + 7, yl[1] - 8, opt.ylabel || "y", { size: 13, fill: ink(), italic: true, serif: true });
+      return V;
+    };
+
+    V.sample = function (f, a, b, n, jump) {
+      n = n || 420;
+      var out = [], prev = null;
+      var lim = jump || Math.min(dh * 1.6, dh);
+      for (var i = 0; i <= n; i++) {
+        var x = a + (b - a) * i / n;
+        var y = f(x);
+        if (typeof y !== "number" || !isFinite(y)) { prev = null; out.push(null); continue; }
+        var cy = Math.max(yr[0] - (yr[1] - yr[0]), Math.min(yr[1] + (yr[1] - yr[0]), y));
+        var p = px([x, cy]);
+        if (prev && Math.hypot(p[0] - prev[0], p[1] - prev[1]) > lim) { prev = null; out.push(null); continue; }
+        out.push(p);
+        prev = p;
+      }
+      return out;
+    };
+
+    function pathOf(pts) {
+      var d = "", pen = false;
+      for (var i = 0; i < pts.length; i++) {
+        var p = pts[i];
+        if (!p) { pen = false; continue; }
+        d += (pen ? "L" : "M") + p[0].toFixed(2) + " " + p[1].toFixed(2);
+        pen = true;
+      }
+      return d;
+    }
+
+    V.plot = function (f, opt) {
+      opt = opt || {};
+      var a = opt.from !== undefined ? opt.from : xr[0];
+      var b = opt.to !== undefined ? opt.to : xr[1];
+      var pts = V.sample(f, a, b, opt.n || 420, opt.jump);
+      var c = opt.color ? accent(opt.color) : accent("blue");
+      var p = mk("path", {
+        d: pathOf(pts), fill: "none", stroke: c,
+        "stroke-width": opt.w || 1.8,
+        "stroke-linecap": "round", "stroke-linejoin": "round",
+        "stroke-dasharray": opt.dash ? (opt.dash === true ? "5 4" : opt.dash) : null,
+        opacity: opt.opacity || 1
+      }, stage);
+      if (opt.label) {
+        var last = null;
+        for (var k = pts.length - 1; k >= 0; k--) if (pts[k]) { last = pts[k]; break; }
+        if (last) V.tag(last, opt.label, { color: opt.color, dx: opt.dx, dy: opt.dy });
+      }
+      return p;
+    };
+
+    V.curve = function (pts, opt) {
+      opt = opt || {};
+      var c = opt.color ? accent(opt.color) : accent("blue");
+      return mk("path", {
+        d: pathOf(pts), fill: opt.fill ? (opt.fillColor || tint(opt.color || "blue")) : "none",
+        stroke: c, "stroke-width": opt.w || 1.8,
+        "stroke-linejoin": "round", "stroke-linecap": "round",
+        "stroke-dasharray": opt.dash ? "5 4" : null
+      }, stage);
+    };
+
+    V.param = function (fn, opt) {
+      opt = opt || {};
+      var t0 = opt.t0 || 0, t1 = opt.t1 === undefined ? Math.PI * 2 : opt.t1;
+      var n = opt.n || 480, pts = [];
+      for (var i = 0; i <= n; i++) {
+        var t = t0 + (t1 - t0) * i / n;
+        var v = fn(t);
+        if (!v) { pts.push(null); continue; }
+        var x = v[0] !== undefined ? v[0] : v.x;
+        var y = v[1] !== undefined ? v[1] : v.y;
+        if (!isFinite(x) || !isFinite(y)) { pts.push(null); continue; }
+        pts.push(px([x, y]));
+      }
+      var c = opt.color ? accent(opt.color) : accent("blue");
+      return mk("path", {
+        d: pathOf(pts), fill: "none", stroke: c,
+        "stroke-width": opt.w || 1.8, "stroke-linecap": "round",
+        "stroke-dasharray": opt.dash ? "5 4" : null
+      }, stage);
+    };
+
+    V.polar = function (r, opt) {
+      opt = opt || {};
+      return V.param(function (t) {
+        var rr = r(t);
+        return [rr * Math.cos(t), rr * Math.sin(t)];
+      }, opt);
+    };
+
+    V.seg = function (a, b, opt) {
+      opt = opt || {};
+      var p1 = px(a), p2 = px(b);
+      return mk("line", {
+        x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+        stroke: opt.color ? accent(opt.color) : ink(),
+        "stroke-width": opt.w || 1.5,
+        "stroke-dasharray": opt.dash ? (opt.dash === true ? "5 4" : opt.dash) : null,
+        "stroke-linecap": "round", opacity: opt.opacity || 1
+      }, stage);
+    };
+
+    V.arrow = function (a, b, opt) {
+      opt = opt || {};
+      var c = opt.color ? accent(opt.color) : accent("blue");
+      var p1 = px(a), p2 = px(b);
+      var dx = p2[0] - p1[0], dy = p2[1] - p1[1];
+      var L = Math.hypot(dx, dy) || 1;
+      var ux = dx / L, uy = dy / L;
+      var hs = opt.head || 9;
+      var ex = p2[0] - ux * (hs - 1), ey = p2[1] - uy * (hs - 1);
+      mk("line", {
+        x1: p1[0], y1: p1[1], x2: ex, y2: ey, stroke: c,
+        "stroke-width": opt.w || 1.8, "stroke-linecap": "round",
+        "stroke-dasharray": opt.dash ? "5 4" : null
+      }, stage);
+      var nx = -uy, ny = ux;
+      mk("path", {
+        d: "M" + p2[0] + " " + p2[1] +
+          "L" + (p2[0] - ux * hs + nx * hs * 0.42) + " " + (p2[1] - uy * hs + ny * hs * 0.42) +
+          "L" + (p2[0] - ux * hs - nx * hs * 0.42) + " " + (p2[1] - uy * hs - ny * hs * 0.42) + "Z",
+        fill: c, stroke: "none"
+      }, stage);
+      if (opt.label) {
+        var mx = (p1[0] + p2[0]) / 2, my = (p1[1] + p2[1]) / 2;
+        var ox2 = opt.lx !== undefined ? opt.lx : nx * 12;
+        var oy2 = opt.ly !== undefined ? opt.ly : ny * 12;
+        txt(top, mx + ox2, my + oy2 + 4, opt.label, {
+          size: opt.size || 13, fill: c, anchor: "middle", italic: true, serif: true
+        });
+      }
+      return p2;
+    };
+
+    V.dot = function (p, opt) {
+      opt = opt || {};
+      var q = px(p);
+      var c = opt.color ? accent(opt.color) : accent("blue");
+      mk("circle", { cx: q[0], cy: q[1], r: opt.r || 4, fill: c, stroke: tint("gray"), "stroke-width": 1.5 }, top);
+      if (opt.label) {
+        txt(top, q[0] + (opt.dx === undefined ? 8 : opt.dx), q[1] + (opt.dy === undefined ? -8 : opt.dy),
+          opt.label, {
+            size: opt.size || 13, fill: strong(opt.color || "blue"),
+            anchor: opt.anchor || "start", italic: opt.italic !== false, serif: true
+          });
+      }
+      return q;
+    };
+
+    V.label = function (p, s, opt) {
+      opt = opt || {};
+      var q = px(p);
+      return txt(top, q[0] + (opt.dx || 0), q[1] + (opt.dy || 0), s, {
+        size: opt.size || 12, fill: opt.color ? strong(opt.color) : ink(),
+        anchor: opt.anchor || "start", italic: opt.italic, mono: opt.mono
+      });
+    };
+
+    V.tag = function (q, s, opt) {
+      opt = opt || {};
+      var c = opt.color ? accent(opt.color) : accent("blue");
+      return txt(top, q[0] + (opt.dx === undefined ? 6 : opt.dx), q[1] + (opt.dy === undefined ? -8 : opt.dy), s, {
+        size: opt.size || 12, fill: c, anchor: opt.anchor || "start"
+      });
+    };
+
+    V.poly = function (pts, opt) {
+      opt = opt || {};
+      var q = pts.map(px);
+      var c = opt.color ? accent(opt.color) : accent("blue");
+      var e = mk("path", {
+        d: "M" + q.map(function (p) { return p[0].toFixed(2) + " " + p[1].toFixed(2); }).join("L") + "Z",
+        fill: opt.fill === false ? "none" : (opt.fillColor || tint(opt.color || "blue")),
+        opacity: opt.opacity === undefined ? (opt.fill === false ? 1 : 0.55) : opt.opacity,
+        stroke: c, "stroke-width": opt.w || 1.5,
+        "stroke-linejoin": "round",
+        "stroke-dasharray": opt.dash ? "5 4" : null
+      }, stage);
+      return e;
+    };
+
+    V.circle = function (c0, r, opt) {
+      opt = opt || {};
+      var q = px(c0);
+      return mk("circle", {
+        cx: q[0], cy: q[1], r: r * sx,
+        fill: opt.fill ? (opt.fillColor || tint(opt.color || "blue")) : "none",
+        "fill-opacity": opt.fill ? 0.4 : 0,
+        stroke: opt.color ? accent(opt.color) : ink(),
+        "stroke-width": opt.w || 1.5,
+        "stroke-dasharray": opt.dash ? "5 4" : null
+      }, stage);
+    };
+
+    V.arc = function (c0, r, a1, a2, opt) {
+      opt = opt || {};
+      var n = 60, pts = [];
+      var dd = a2 - a1;
+      while (dd > Math.PI) dd -= Math.PI * 2;
+      while (dd < -Math.PI) dd += Math.PI * 2;
+      for (var i = 0; i <= n; i++) {
+        var t = a1 + dd * i / n;
+        pts.push([c0[0] + r * Math.cos(t), c0[1] + r * Math.sin(t)]);
+      }
+      return V.curve(pts, opt);
+    };
+
+    V.angle = function (v, p1, p2, opt) {
+      opt = opt || {};
+      var r = (opt.r || 26) / sx;
+      var A = sub(p1, v), B = sub(p2, v);
+      var a1 = Math.atan2(A[1], A[0]), a2 = Math.atan2(B[1], B[0]);
+      var dd = a2 - a1;
+      while (dd > Math.PI) dd -= Math.PI * 2;
+      while (dd < -Math.PI) dd += Math.PI * 2;
+      var n = Math.max(8, Math.round(Math.abs(dd) / 0.08)), pts = [];
+      for (var i = 0; i <= n; i++) {
+        var t = a1 + dd * i / n;
+        pts.push([v[0] + r * Math.cos(t), v[1] + r * Math.sin(t)]);
+      }
+      var c = opt.color ? accent(opt.color) : accent("teal");
+      V.curve(pts, { color: opt.color || "teal", w: opt.w || 1.2 });
+      if (opt.label !== false) {
+        var am = a1 + dd / 2;
+        var lr = r + (opt.lr || 16) / sx;
+        var lp = px([v[0] + lr * Math.cos(am), v[1] + lr * Math.sin(am)]);
+        txt(top, lp[0], lp[1] + 4, opt.label || (Math.abs(dd) * 180 / Math.PI).toFixed(0) + "°", {
+          size: opt.size || 11, fill: c, anchor: "middle"
+        });
+      }
+      return V;
+    };
+
+    V.rightAngle = function (v, p1, p2, opt) {
+      opt = opt || {};
+      var s = (opt.size || 11) / sx;
+      var A = mul(unit(sub(p1, v)), s), B = mul(unit(sub(p2, v)), s);
+      var q1 = px(add(v, A)), q2 = px(add(add(v, A), B)), q3 = px(add(v, B));
+      mk("path", {
+        d: "M" + q1[0] + " " + q1[1] + "L" + q2[0] + " " + q2[1] + "L" + q3[0] + " " + q3[1],
+        fill: "none", stroke: opt.color ? accent(opt.color) : accent("coral"),
+        "stroke-width": 1.2
+      }, stage);
+      return V;
+    };
+
+    V.mark = function (a, b, n, opt) {
+      opt = opt || {};
+      n = n || 1;
+      var A = px(a), B = px(b);
+      var d = sub(B, A), L = len(d) || 1, u = unit(d), p = perp(u);
+      var s = opt.size || 5;
+      for (var i = 0; i < n; i++) {
+        var t = 0.5 + (i - (n - 1) / 2) * 0.055;
+        var m = [A[0] + d[0] * t, A[1] + d[1] * t];
+        mk("line", {
+          x1: m[0] - p[0] * s - u[0] * 2, y1: m[1] - p[1] * s - u[1] * 2,
+          x2: m[0] + p[0] * s + u[0] * 2, y2: m[1] + p[1] * s + u[1] * 2,
+          stroke: opt.color ? accent(opt.color) : accent("coral"), "stroke-width": 1.4
+        }, stage);
+      }
+      return V;
+    };
+
+    V.area = function (f, a, b, opt) {
+      opt = opt || {};
+      var pts = V.sample(f, a, b, opt.n || 300);
+      var base = px([0, 0])[1];
+      var d = "", pen = false, first = null, last = null;
+      for (var i = 0; i < pts.length; i++) {
+        if (!pts[i]) continue;
+        if (!pen) { d += "M" + pts[i][0].toFixed(1) + " " + base.toFixed(1); first = pts[i]; pen = true; }
+        d += "L" + pts[i][0].toFixed(1) + " " + pts[i][1].toFixed(1);
+        last = pts[i];
+      }
+      if (last) d += "L" + last[0].toFixed(1) + " " + base.toFixed(1) + "Z";
+      return mk("path", {
+        d: d, fill: opt.fillColor || tint(opt.color || "blue"),
+        opacity: opt.opacity || 0.5, stroke: "none"
+      }, stage);
+    };
+
+    V.rect = function (p, w, h, opt) {
+      opt = opt || {};
+      var q = px(p);
+      return mk("rect", {
+        x: q[0], y: q[1] - h * sy, width: w * sx, height: h * sy,
+        fill: opt.fill === false ? "none" : (opt.fillColor || tint(opt.color || "teal")),
+        opacity: opt.opacity === undefined ? 0.5 : opt.opacity,
+        stroke: opt.color ? accent(opt.color) : accent("teal"),
+        "stroke-width": 1.2, "stroke-dasharray": opt.dash ? "5 4" : null
+      }, stage);
+    };
+
+    V.legend = function (items, opt) {
+      opt = opt || {};
+      var x = opt.x || (ox + 8), y = opt.y || (oy + 14);
+      var gap = 17;
+      var maxw = 0;
+      for (var j = 0; j < items.length; j++) maxw = Math.max(maxw, tw(items[j].text, 11));
+      var lg = mk("g", null, top);
+      if (opt.bg !== false) {
+        mk("rect", {
+          x: x - 8, y: y - 14, width: maxw + 54, height: items.length * gap + 8,
+          rx: 5, fill: opt.bgColor || bgFill(), opacity: 0.9,
+          stroke: faint(), "stroke-width": 0.5
+        }, lg);
+      }
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        var yy = y + i * gap;
+        mk("line", {
+          x1: x, y1: yy - 4, x2: x + 18, y2: yy - 4,
+          stroke: it.color ? accent(it.color) : ink(), "stroke-width": 2,
+          "stroke-dasharray": it.dash ? "5 4" : null
+        }, lg);
+        txt(lg, x + 24, yy, it.text, { size: 11, fill: ink(), halo: false });
+      }
+      return V;
+    };
+
+    if (o.grid) V.grid(o.gridOpt);
+    if (o.axes) V.axes(o.axesOpt);
+
+    return V;
+  }
+
+  g.MK = {
+    frame: Frame,
+    mk: mk,
+    txt: txt,
+    textWidth: tw,
+    niceStep: niceStep,
+    fmt: fmt,
+    accent: accent,
+    tint: tint,
+    strong: strong,
+    ink: ink,
+    dark: D,
+    v: { sub: sub, add: add, mul: mul, len: len, unit: unit, perp: perp },
+    palette: R
+  };
+})(window);
+
+</script>
+<script>
+(function (g) {
+  "use strict";
+
+  var MK = g.MK;
+  if (!MK) throw new Error("mk-core.js must load before mk-3d.js");
+  var mk = MK.mk;
+
+  function space(o) {
+    o = o || {};
+    var box = o.box || [40, 26, 600, 320];
+    var bx = box[0], by = box[1], bw = box[2], bh = box[3];
+    var yaw = (o.yaw === undefined ? -30 : o.yaw) * Math.PI / 180;
+    var pitch = (o.pitch === undefined ? 20 : o.pitch) * Math.PI / 180;
+    var range = o.range || 3;
+    var zoom = o.zoom || 1;
+    var scale = Math.min(bw, bh) / (range * 2.05) * zoom;
+    var cx = bx + bw / 2;
+    var cy = by + bh / 2;
+    var H = o.h || Math.ceil(by + bh + 26);
+    var cen = o.center || [0, 0, 0];
+
+    var svg = mk("svg", {
+      viewBox: "0 0 " + (o.w || 680) + " " + H,
+      width: "100%", role: "img", xmlns: "http://www.w3.org/2000/svg"
+    });
+    svg.style.display = "block";
+    var ti = mk("title", null, svg);
+    ti.textContent = o.title || "立体图形";
+    mk("desc", null, svg).textContent = o.desc || "";
+
+    var stage = mk("g", null, svg);
+    var overlay = mk("g", null, svg);
+
+    var S = {
+      svg: svg, g: stage, over: overlay, W: o.w || 680, H: H,
+      color: MK.accent, tint: MK.tint, strong: MK.strong, ink: MK.ink,
+      dark: MK.dark
+    };
+
+    function rot(p) {
+      var q0 = p[0] - cen[0], q1 = p[1] - cen[1], q2 = p[2] - cen[2];
+      var cyw = Math.cos(yaw), syw = Math.sin(yaw);
+      var X = q0 * cyw - q1 * syw;
+      var Y = q0 * syw + q1 * cyw;
+      return [X, Y, q2];
+    }
+
+    function proj(p) {
+      var r = rot(p);
+      var cp = Math.cos(pitch), sp = Math.sin(pitch);
+      return [cx + r[0] * scale, cy + (-r[1] * sp - r[2] * cp) * scale];
+    }
+
+    function depth(p) {
+      var r = rot(p);
+      return r[1] * Math.cos(pitch) + r[2] * Math.sin(pitch);
+    }
+
+    function camDir() {
+      return [
+        Math.sin(yaw) * Math.cos(pitch),
+        Math.cos(yaw) * Math.cos(pitch),
+        Math.sin(pitch)
+      ];
+    }
+
+    S.p = proj;
+    S.d = depth;
+    S.scale = scale;
+    S.yaw = function () { return yaw; };
+    S.pitch = function () { return pitch; };
+
+    S.clear = function () {
+      while (stage.firstChild) stage.removeChild(stage.firstChild);
+      while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
+      return S;
+    };
+
+    S.line = function (a, b, opt) {
+      opt = opt || {};
+      var p1 = proj(a), p2 = proj(b);
+      return mk("line", {
+        x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+        stroke: opt.color ? MK.accent(opt.color) : MK.ink(),
+        "stroke-width": opt.w || 1.4,
+        "stroke-dasharray": opt.dash ? (opt.dash === true ? "5 4" : opt.dash) : null,
+        "stroke-linecap": "round", opacity: opt.opacity || 1
+      }, stage);
+    };
+
+    S.arrow = function (a, b, opt) {
+      opt = opt || {};
+      var c = opt.color ? MK.accent(opt.color) : MK.ink();
+      var p1 = proj(a), p2 = proj(b);
+      var dx = p2[0] - p1[0], dy = p2[1] - p1[1];
+      var L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+      var hs = opt.head || 9;
+      mk("line", {
+        x1: p1[0], y1: p1[1], x2: p2[0] - ux * (hs - 1), y2: p2[1] - uy * (hs - 1),
+        stroke: c, "stroke-width": opt.w || 1.7, "stroke-linecap": "round"
+      }, stage);
+      var nx = -uy, ny = ux;
+      mk("path", {
+        d: "M" + p2[0] + " " + p2[1] +
+          "L" + (p2[0] - ux * hs + nx * hs * 0.4) + " " + (p2[1] - uy * hs + ny * hs * 0.4) +
+          "L" + (p2[0] - ux * hs - nx * hs * 0.4) + " " + (p2[1] - uy * hs - ny * hs * 0.4) + "Z",
+        fill: c, stroke: "none"
+      }, stage);
+      if (opt.label) {
+        var m = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+        MK.txt(overlay, m[0] + nx * 13, m[1] + ny * 13 + 4, opt.label, {
+          size: 13, fill: c, anchor: "middle", italic: true, serif: true
+        });
+      }
+      return S;
+    };
+
+    S.axes = function (opt) {
+      opt = opt || {};
+      var L = opt.len || 1.0;
+      var c = MK.ink();
+      var o = [0, 0, 0];
+      var dirs = [[L, 0, 0], [0, L, 0], [0, 0, L]];
+      var names = opt.labels || ["x", "y", "z"];
+      var cols = opt.colors || ["gray", "gray", "gray"];
+      for (var i = 0; i < 3; i++) {
+        var e = dirs[i];
+        var p1 = proj(o), p2 = proj(e);
+        var cc = opt.muted ? c : MK.accent(cols[i]);
+        mk("line", {
+          x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
+          stroke: cc, "stroke-width": 1.2, "stroke-dasharray": opt.dash === false ? null : null
+        }, stage);
+        var dx = p2[0] - p1[0], dy = p2[1] - p1[1];
+        var Lp = Math.hypot(dx, dy) || 1, ux = dx / Lp, uy = dy / Lp;
+        var hs = 8;
+        mk("path", {
+          d: "M" + (p2[0] + ux * 3) + " " + (p2[1] + uy * 3) +
+            "L" + (p2[0] - ux * hs + uy * hs * 0.4) + " " + (p2[1] - uy * hs - ux * hs * 0.4) +
+            "L" + (p2[0] - ux * hs - uy * hs * 0.4) + " " + (p2[1] - uy * hs + ux * hs * 0.4) + "Z",
+          fill: cc, stroke: "none"
+        }, stage);
+        MK.txt(overlay, p2[0] + ux * 13 + 4, p2[1] + uy * 13 + 4, names[i], {
+          size: 13, fill: cc, italic: true, serif: true, anchor: "middle"
+        });
+      }
+      return S;
+    };
+
+    S.point = function (p, opt) {
+      opt = opt || {};
+      var q = proj(p);
+      var c = opt.color ? MK.accent(opt.color) : MK.accent("blue");
+      mk("circle", { cx: q[0], cy: q[1], r: opt.r || 3.6, fill: c, stroke: MK.tint("gray"), "stroke-width": 1.4 }, overlay);
+      if (opt.label) {
+        MK.txt(overlay, q[0] + (opt.dx === undefined ? 8 : opt.dx), q[1] + (opt.dy === undefined ? -7 : opt.dy),
+          opt.label, {
+            size: opt.size || 13, fill: MK.strong(opt.color || "blue"),
+            italic: opt.italic !== false, serif: true, anchor: opt.anchor || "start"
+          });
+      }
+      return q;
+    };
+
+    S.label = function (p, s, opt) {
+      opt = opt || {};
+      var q = proj(p);
+      return MK.txt(overlay, q[0] + (opt.dx || 0), q[1] + (opt.dy || 0), s, {
+        size: opt.size || 12, fill: opt.color ? MK.strong(opt.color) : MK.ink(),
+        anchor: opt.anchor || "start", italic: opt.italic, serif: opt.serif
+      });
+    };
+
+    function polyPath(pts, close) {
+      var q = pts.map(proj);
+      return (close ? "M" : "M") + q.map(function (p) {
+        return p[0].toFixed(2) + " " + p[1].toFixed(2);
+      }).join("L") + (close ? "Z" : "");
+    }
+
+    S.face = function (pts, opt) {
+      opt = opt || {};
+      var c = opt.color ? MK.accent(opt.color) : MK.accent("blue");
+      return mk("path", {
+        d: polyPath(pts, true),
+        fill: opt.fillColor || MK.tint(opt.color || "blue"),
+        "fill-opacity": opt.opacity === undefined ? 0.42 : opt.opacity,
+        stroke: opt.stroke === false ? "none" : c,
+        "stroke-width": opt.w || 1.2,
+        "stroke-dasharray": opt.dash ? "5 4" : null,
+        "stroke-linejoin": "round"
+      }, stage);
+    };
+
+    S.polyline = function (pts, opt) {
+      opt = opt || {};
+      var c = opt.color ? MK.accent(opt.color) : MK.ink();
+      return mk("path", {
+        d: polyPath(pts, opt.close),
+        fill: "none", stroke: c, "stroke-width": opt.w || 1.4,
+        "stroke-dasharray": opt.dash ? "5 4" : null,
+        "stroke-linecap": "round", "stroke-linejoin": "round"
+      }, stage);
+    };
+
+    function newell(pts) {
+      var n = [0, 0, 0];
+      for (var i = 0; i < pts.length; i++) {
+        var a = pts[i], b = pts[(i + 1) % pts.length];
+        n[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        n[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+      }
+      return n;
+    }
+
+    S.solid = function (verts, faces, opt) {
+      opt = opt || {};
+      var cd = camDir();
+      var faceVisible = [], i, j;
+      for (i = 0; i < faces.length; i++) {
+        var f = faces[i];
+        var pts = f.map(function (k) { return verts[k]; });
+        var n = newell(pts);
+        var dot = n[0] * cd[0] + n[1] * cd[1] + n[2] * cd[2];
+        faceVisible.push(dot > 0);
+      }
+
+      var order = faces.map(function (f2, idx) {
+        var c0 = [0, 0, 0];
+        f2.forEach(function (vi) {
+          c0[0] += verts[vi][0] / f2.length;
+          c0[1] += verts[vi][1] / f2.length;
+          c0[2] += verts[vi][2] / f2.length;
+        });
+        return { idx: idx, d: depth(c0) };
+      }).sort(function (a, b) { return a.d - b.d; });
+
+      for (i = 0; i < order.length; i++) {
+        var fi = order[i].idx;
+        var fp = faces[fi].map(function (vi) { return verts[vi]; });
+        mk("path", {
+          d: polyPath(fp, true),
+          fill: opt.fillColor || MK.tint(opt.color || "blue"),
+          "fill-opacity": opt.opacity === undefined ? 0.3 : opt.opacity,
+          stroke: "none"
+        }, stage);
+      }
+
+      var em = {}, hm = {};
+      for (i = 0; i < faces.length; i++) {
+        var fa = faces[i];
+        for (j = 0; j < fa.length; j++) {
+          var a = fa[j], b = fa[(j + 1) % fa.length];
+          var key = Math.min(a, b) + "_" + Math.max(a, b);
+          var rec = { a: Math.min(a, b), b: Math.max(a, b) };
+          if (faceVisible[i]) em[key] = rec;
+          else if (!em[key]) hm[key] = rec;
+        }
+      }
+
+      if (opt.autoHide !== false) {
+        for (var hk in hm) {
+          if (em[hk]) continue;
+          S.line(verts[hm[hk].a], verts[hm[hk].b], {
+            color: opt.hideColor || "gray",
+            dash: true, w: 1.1, opacity: 0.9
+          });
+        }
+      } else {
+        for (var hk2 in hm) if (!em[hk2]) em[hk2] = hm[hk2];
+      }
+
+      for (var k3 in em) {
+        var e3 = em[k3];
+        S.line(verts[e3.a], verts[e3.b], {
+          color: opt.color || "blue", w: opt.w || 1.5
+        });
+      }
+      return S;
+    };
+
+    S.box = function (mn, mx, opt) {
+      var x0 = Math.min(mn[0], mx[0]), x1 = Math.max(mn[0], mx[0]);
+      var y0 = Math.min(mn[1], mx[1]), y1 = Math.max(mn[1], mx[1]);
+      var z0 = Math.min(mn[2], mx[2]), z1 = Math.max(mn[2], mx[2]);
+      var v = [
+        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]
+      ];
+      var f = [
+        [0, 3, 2, 1], [4, 5, 6, 7],
+        [0, 1, 5, 4], [2, 3, 7, 6],
+        [0, 4, 7, 3], [1, 2, 6, 5]
+      ];
+      return S.solid(v, f, opt);
+    };
+
+    S.prism = function (base, h, opt) {
+      var n = base.length, v = [], i;
+      for (i = 0; i < n; i++) v.push([base[i][0], base[i][1], 0]);
+      for (i = 0; i < n; i++) v.push([base[i][0], base[i][1], h]);
+      var bot = [];
+      for (i = n - 1; i >= 0; i--) bot.push(i);
+      var top = [];
+      for (i = 0; i < n; i++) top.push(i + n);
+      var sides = [];
+      for (i = 0; i < n; i++) sides.push([i, (i + 1) % n, (i + 1) % n + n, i + n]);
+      return S.solid(v, sides.concat([bot, top]), opt);
+    };
+
+    S.pyramid = function (base, apex, opt) {
+      var n = base.length, v = base.map(function (p) { return [p[0], p[1], 0]; });
+      v.push(apex);
+      var bot = [];
+      for (var i = n - 1; i >= 0; i--) bot.push(i);
+      var sides = [];
+      for (i = 0; i < n; i++) sides.push([i, (i + 1) % n, n]);
+      return S.solid(v, sides.concat([bot]), opt);
+    };
+
+    S.plane = function (o0, u, v, opt) {
+      opt = opt || {};
+      var a = o0, b = [o0[0] + u[0], o0[1] + u[1], o0[2] + u[2]];
+      var c = [b[0] + v[0], b[1] + v[1], b[2] + v[2]];
+      var d = [o0[0] + v[0], o0[1] + v[1], o0[2] + v[2]];
+      return S.face([a, b, c, d], opt);
+    };
+
+    S.sphere = function (c0, r, opt) {
+      opt = opt || {};
+      var c = opt.color ? MK.accent(opt.color) : MK.accent("teal");
+      var q = proj(c0);
+      mk("circle", {
+        cx: q[0], cy: q[1], r: r * scale,
+        fill: MK.tint(opt.color || "teal"), "fill-opacity": 0.3,
+        stroke: c, "stroke-width": 1.4
+      }, stage);
+      var rings = opt.rings || 1;
+      for (var k = 0; k < rings; k++) {
+        var zz = c0[2] + (k === 0 ? 0 : r * 0.5);
+        var rr = Math.sqrt(Math.max(0, r * r - (zz - c0[2]) * (zz - c0[2])));
+        var pts = [];
+        for (var i = 0; i <= 72; i++) {
+          var t = i / 72 * Math.PI * 2;
+          pts.push([c0[0] + rr * Math.cos(t), c0[1] + rr * Math.sin(t), zz]);
+        }
+        mk("path", {
+          d: polyPath(pts, false), fill: "none", stroke: c,
+          "stroke-width": 1, "stroke-dasharray": k === 0 ? null : "4 3", opacity: 0.8
+        }, stage);
+      }
+      if (opt.meridian !== false) {
+        var mp = [];
+        for (var j = 0; j <= 72; j++) {
+          var th = j / 72 * Math.PI * 2;
+          mp.push([c0[0], c0[1] + r * Math.cos(th), c0[2] + r * Math.sin(th)]);
+        }
+        mk("path", {
+          d: polyPath(mp, false), fill: "none", stroke: c,
+          "stroke-width": 1, "stroke-dasharray": "4 3", opacity: 0.7
+        }, stage);
+      }
+      return S;
+    };
+
+    S.cylinder = function (c0, r, h, opt) {
+      opt = opt || {};
+      var c = opt.color ? MK.accent(opt.color) : MK.accent("teal");
+      var i, t, pts;
+      for (var k = 0; k < 2; k++) {
+        pts = [];
+        var zz = c0[2] + k * h;
+        for (i = 0; i <= 72; i++) {
+          t = i / 72 * Math.PI * 2;
+          pts.push([c0[0] + r * Math.cos(t), c0[1] + r * Math.sin(t), zz]);
+        }
+        mk("path", {
+          d: polyPath(pts, true), fill: "none", stroke: c, "stroke-width": 1.4,
+          "stroke-dasharray": k === 0 ? "5 4" : null
+        }, stage);
+      }
+      var p1 = proj([c0[0] + r * Math.cos(yaw - Math.PI / 2), c0[1] + r * Math.sin(yaw - Math.PI / 2), c0[2]]);
+      var p2 = proj([c0[0] + r * Math.cos(yaw - Math.PI / 2), c0[1] + r * Math.sin(yaw - Math.PI / 2), c0[2] + h]);
+      var p3 = proj([c0[0] + r * Math.cos(yaw + Math.PI / 2), c0[1] + r * Math.sin(yaw + Math.PI / 2), c0[2]]);
+      var p4 = proj([c0[0] + r * Math.cos(yaw + Math.PI / 2), c0[1] + r * Math.sin(yaw + Math.PI / 2), c0[2] + h]);
+      mk("line", { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1], stroke: c, "stroke-width": 1.4 }, stage);
+      mk("line", { x1: p3[0], y1: p3[1], x2: p4[0], y2: p4[1], stroke: c, "stroke-width": 1.4, "stroke-dasharray": "5 4" }, stage);
+      return S;
+    };
+
+    S.angle = function (v, a, b, opt) {
+      opt = opt || {};
+      var r = opt.r || 0.5;
+      var A = [a[0] - v[0], a[1] - v[1], a[2] - v[2]];
+      var B = [b[0] - v[0], b[1] - v[1], b[2] - v[2]];
+      var la = Math.hypot(A[0], A[1], A[2]) || 1;
+      var lb = Math.hypot(B[0], B[1], B[2]) || 1;
+      var ua = [A[0] / la, A[1] / la, A[2] / la];
+      var ub = [B[0] / lb, B[1] / lb, B[2] / lb];
+      var n = 0;
+      for (var i = 0; i < 3; i++) n += ua[i] * ub[i];
+      n = Math.max(-1, Math.min(1, n));
+      var ang = Math.acos(n);
+      var pts = [];
+      for (var k = 0; k <= 24 && ang > 1e-6; k++) {
+        var t = k / 24;
+        var s1 = Math.sin((1 - t) * ang) / Math.sin(ang);
+        var s2 = Math.sin(t * ang) / Math.sin(ang);
+        var dir = [];
+        for (var j = 0; j < 3; j++) dir.push(s1 * ua[j] + s2 * ub[j]);
+        var dn = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+        pts.push([v[0] + r * dir[0] / dn, v[1] + r * dir[1] / dn, v[2] + r * dir[2] / dn]);
+      }
+      S.polyline(pts, { color: opt.color || "teal", w: 1.2 });
+      if (opt.label !== false) {
+        var mid = pts[Math.floor(pts.length / 2)] || v;
+        var pm = proj([v[0] + (mid[0] - v[0]) * 1.45, v[1] + (mid[1] - v[1]) * 1.45, v[2] + (mid[2] - v[2]) * 1.45]);
+        MK.txt(overlay, pm[0], pm[1] + 4, opt.label || ((ang * 180 / Math.PI).toFixed(0) + "°"), {
+          size: 11, fill: MK.accent(opt.color || "teal"), anchor: "middle"
+        });
+      }
+      return S;
+    };
+
+    S.drag = function (redraw, opt) {
+      opt = opt || {};
+      var down = false, lx = 0, ly = 0;
+      svg.style.cursor = "grab";
+      svg.style.touchAction = "none";
+      svg.addEventListener("pointerdown", function (e) {
+        down = true; lx = e.clientX; ly = e.clientY;
+        svg.style.cursor = "grabbing";
+        if (svg.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch (er) {} }
+      });
+      svg.addEventListener("pointermove", function (e) {
+        if (!down) return;
+        var dx = e.clientX - lx, dy = e.clientY - ly;
+        lx = e.clientX; ly = e.clientY;
+        yaw += dx * 0.008;
+        pitch = Math.max(-1.45, Math.min(1.45, pitch + dy * 0.008));
+        redraw();
+      });
+      var up = function () { down = false; svg.style.cursor = "grab"; };
+      svg.addEventListener("pointerup", up);
+      svg.addEventListener("pointercancel", up);
+      svg.addEventListener("pointerleave", up);
+      return S;
+    };
+
+    S.reset = function (redraw) {
+      yaw = (o.yaw === undefined ? -30 : o.yaw) * Math.PI / 180;
+      pitch = (o.pitch === undefined ? 20 : o.pitch) * Math.PI / 180;
+      redraw();
+      return S;
+    };
+
+    return S;
+  }
+
+  MK.space = space;
+})(window);
+
+</script>
+<script>
+var S = MK.space({
+  box: [40, 26, 600, 330],
+  yaw: 26,
+  pitch: 36,
+  range: 2.3,
+  center: [1, 1, 1],
+  title: "正方体的正六边形截面",
+  desc: "平面 x+y+z=3 与棱长 2 的正方体相交，截面为正六边形"
+});
+document.getElementById("fig").appendChild(S.svg);
+
+var hex = [
+  [1, 0, 2], [2, 0, 1], [2, 1, 0],
+  [1, 2, 0], [0, 2, 1], [0, 1, 2]
+];
+var offs = [[-14, -4], [10, -4], [12, 4], [10, 10], [-14, 8], [-16, -6]];
+var names = ["P₁", "P₂", "P₃", "P₄", "P₅", "P₆"];
+
+function draw() {
+  S.clear();
+  S.box([0, 0, 0], [2, 2, 2], { color: "blue", opacity: 0.08 });
+  S.face(hex, { color: "coral", opacity: 0.3, w: 1.8 });
+
+  for (var i = 0; i < hex.length; i++) {
+    S.point(hex[i], {
+      color: "coral", r: 3.2, label: names[i],
+      dx: offs[i][0], dy: offs[i][1],
+      anchor: offs[i][0] < 0 ? "end" : "start"
+    });
+  }
+
+  S.point([0, 0, 0], { color: "gray", r: 2.4, label: "O", dx: -13, dy: 12 });
+  S.line([0, 0, 0], [2, 2, 2], { dash: true, color: "gray", w: 1 });
+}
+
+draw();
+S.drag(draw);
+</script>
+</body>
+</html>

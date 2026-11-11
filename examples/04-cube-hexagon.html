@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>正方体的正六边形截面</title>
+<style>
+  :root{
+    --color-background-primary:#ffffff; --color-text-primary:#1a1a19;
+    --font-sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-serif:Georgia,"Times New Roman",serif;
+  }
+  body{margin:0;padding:28px 20px;background:#fff;color:#1a1a19;font-family:var(--font-sans)}
+  figure{max-width:680px;margin:0 auto}
+  figcaption{font-size:13px;color:#5F5E5A;line-height:1.7;margin-top:12px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#F1EFE8;padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+<figure>
+  <div id="fig"></div>
+  <figcaption>
+    平面 <code>x + y + z = 3</code> 截棱长为 2 的正方体，截面为正六边形——六个顶点分别是六条棱的中点。
+    拖动图形可旋转视角。
+  </figcaption>
+</figure>
+
+<script src="../skill/assets/mk-core.js"></script>
+<script src="../skill/assets/mk-3d.js"></script>
+<script>
+var S = MK.space({
+  box: [40, 26, 600, 330],
+  yaw: 26,
+  pitch: 36,
+  range: 2.3,
+  center: [1, 1, 1],
+  title: "正方体的正六边形截面",
+  desc: "平面 x+y+z=3 与棱长 2 的正方体相交，截面为正六边形"
+});
+document.getElementById("fig").appendChild(S.svg);
+
+var hex = [
+  [1, 0, 2], [2, 0, 1], [2, 1, 0],
+  [1, 2, 0], [0, 2, 1], [0, 1, 2]
+];
+var offs = [[-14, -4], [10, -4], [12, 4], [10, 10], [-14, 8], [-16, -6]];
+var names = ["P₁", "P₂", "P₃", "P₄", "P₅", "P₆"];
+
+function draw() {
+  S.clear();
+  S.box([0, 0, 0], [2, 2, 2], { color: "blue", opacity: 0.08 });
+  S.face(hex, { color: "coral", opacity: 0.3, w: 1.8 });
+
+  for (var i = 0; i < hex.length; i++) {
+    S.point(hex[i], {
+      color: "coral", r: 3.2, label: names[i],
+      dx: offs[i][0], dy: offs[i][1],
+      anchor: offs[i][0] < 0 ? "end" : "start"
+    });
+  }
+
+  S.point([0, 0, 0], { color: "gray", r: 2.4, label: "O", dx: -13, dy: 12 });
+  S.line([0, 0, 0], [2, 2, 2], { dash: true, color: "gray", w: 1 });
+}
+
+draw();
+S.drag(draw);
+</script>
+</body>
+</html>

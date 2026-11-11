@@ -1,0 +1,12 @@
+{
+  "name": "mathviz-for-deepseek",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DeepSeek 网页端的 MathViz 作图扩展：可选提示词 + mathviz 代码块沙箱渲染",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test/core.test.mjs",
+    "e2e": "node test/e2e.mjs",
+    "check": "node --check src/content.js && node --check src/prompt.js && node --check src/detect.js && node --check src/viewer.js"
+  }
+}

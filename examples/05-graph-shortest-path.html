@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>带权有向图的最短路径</title>
+<style>
+  :root{
+    --color-background-primary:#ffffff; --color-text-primary:#1a1a19;
+    --font-sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-serif:Georgia,"Times New Roman",serif;
+  }
+  body{margin:0;padding:28px 20px;background:#fff;color:#1a1a19;font-family:var(--font-sans)}
+  figure{max-width:680px;margin:0 auto}
+  figcaption{font-size:13px;color:#5F5E5A;line-height:1.7;margin-top:12px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#F1EFE8;padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+<figure>
+  <div id="fig"></div>
+  <figcaption>
+    边上的数字是权重。红色路径 <code>A → B → C → D → E</code> 是 A 到 E 的最短路，总长
+    <code>4 + 2 + 3 + 2 = 11</code>；另一条 <code>A → B → D → E</code> 长 17。
+  </figcaption>
+</figure>
+
+<script src="../skill/assets/mk-core.js"></script>
+<script src="../skill/assets/mk-graph.js"></script>
+<script>
+var G = MK.graph({
+  box: [40, 24, 600, 340],
+  directed: true,
+  nodes: [
+    { id: "A", x: 340, y: 52, fixed: true },
+    { id: "B", x: 208, y: 148, fixed: true },
+    { id: "C", x: 452, y: 148, fixed: true },
+    { id: "D", x: 340, y: 246, fixed: true },
+    { id: "E", x: 340, y: 336, fixed: true }
+  ],
+  edges: [
+    ["A", "B", 4],
+    ["A", "C", 10],
+    ["B", "C", 2],
+    ["B", "D", 11],
+    ["C", "D", 3],
+    ["C", "E", 9],
+    ["D", "E", 2]
+  ],
+  title: "带权有向图与最短路径",
+  desc: "A 到 E 的最短路径为 A-B-C-D-E，总权重 11"
+});
+document.getElementById("fig").appendChild(G.svg);
+
+G.draw();
+G.path(["A", "B", "C", "D", "E"], { color: "red", w: 3.2 });
+
+G.mark("A", { color: "green", w: 2.2 });
+G.mark("E", { color: "green", w: 2.2 });
+
+MK.txt(G.svg, 296, 36, "起点", { size: 11, fill: MK.accent("green"), anchor: "middle" });
+MK.txt(G.svg, 340, 376, "终点", { size: 11, fill: MK.accent("green"), anchor: "middle" });
+</script>
+</body>
+</html>

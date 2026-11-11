@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>三角形的内心与内切圆</title>
+<style>
+  :root{
+    --color-background-primary:#ffffff; --color-text-primary:#1a1a19;
+    --font-sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-serif:Georgia,"Times New Roman",serif;
+  }
+  body{margin:0;padding:28px 20px;background:#fff;color:#1a1a19;font-family:var(--font-sans)}
+  figure{max-width:680px;margin:0 auto}
+  figcaption{font-size:13px;color:#5F5E5A;line-height:1.7;margin-top:12px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#F1EFE8;padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+<figure>
+  <div id="fig"></div>
+  <figcaption>
+    三条角平分线交于内心 <code>I</code>，内切圆与三边相切。半径由面积法求得
+    <code>r = S / s</code>，其中 <code>s</code> 为半周长；<code>D</code> 是切点，<code>ID ⊥ AB</code>。
+  </figcaption>
+</figure>
+
+<script src="../skill/assets/mk-core.js"></script>
+<script>
+var A = [0, 0], B = [4, 0], C = [1.2, 3];
+
+function d(p, q) { return Math.hypot(p[0] - q[0], p[1] - q[1]); }
+var la = d(B, C), lb = d(C, A), lc = d(A, B);
+var per = la + lb + lc;
+var I = [(la * A[0] + lb * B[0] + lc * C[0]) / per,
+         (la * A[1] + lb * B[1] + lc * C[1]) / per];
+var area = Math.abs((B[0] - A[0]) * (C[1] - A[1]) - (C[0] - A[0]) * (B[1] - A[1])) / 2;
+var r = area / (per / 2);
+
+var V = MK.frame({
+  box: [40, 26, 430, 330],
+  x: [-0.45, 4.75],
+  y: [-0.65, 3.55],
+  equal: true,
+  grid: false,
+  axes: false,
+  title: "三角形的内心与内切圆",
+  desc: "三条角平分线交于内心，内切圆与三边相切"
+});
+document.getElementById("fig").appendChild(V.svg);
+
+V.poly([A, B, C], { color: "blue", fill: true, opacity: 0.13 });
+V.circle(I, r, { color: "coral" });
+
+V.seg(A, I, { dash: true, color: "teal", w: 1.1 });
+V.seg(B, I, { dash: true, color: "teal", w: 1.1 });
+V.seg(C, I, { dash: true, color: "teal", w: 1.1 });
+
+var foot = [I[0], 0];
+V.dot(foot, { color: "coral", r: 3 });
+V.rightAngle(foot, I, B, { size: 10, color: "coral" });
+V.label(foot, "D", { dx: -4, dy: 17, size: 12, color: "coral", anchor: "end" });
+
+V.dot(A, { color: "blue", r: 3.6 });
+V.dot(B, { color: "blue", r: 3.6 });
+V.dot(C, { color: "blue", r: 3.6 });
+V.dot(I, { color: "teal", r: 4 });
+
+V.label(A, "A", { dx: -12, dy: 15, size: 13, italic: true });
+V.label(B, "B", { dx: 8, dy: 15, size: 13, italic: true });
+V.label(C, "C", { dx: -2, dy: -12, size: 13, italic: true, anchor: "middle" });
+V.label(I, "I", { dx: 8, dy: -6, size: 13, color: "teal", italic: true });
+
+V.angle(A, B, C, { r: 30, color: "teal", label: "α" });
+V.angle(B, C, A, { r: 26, color: "teal", label: "β" });
+V.angle(C, A, B, { r: 26, color: "teal", label: "γ" });
+
+MK.txt(V.svg, 492, 104, "内心 I", { size: 12, fill: MK.strong("teal"), weight: 500 });
+MK.txt(V.svg, 492, 126, "三条角平分线的交点", { size: 11, fill: MK.ink() });
+MK.txt(V.svg, 492, 166, "内切圆半径", { size: 12, fill: MK.strong("coral"), weight: 500 });
+MK.txt(V.svg, 492, 188, "r = S / s = 1.06", { size: 12, fill: MK.accent("coral"), mono: true });
+MK.txt(V.svg, 492, 208, "S = 6，s = 5.67", { size: 11, fill: MK.ink() });
+MK.txt(V.svg, 492, 248, "ID ⊥ AB，D 为切点", { size: 11, fill: MK.ink() });
+</script>
+</body>
+</html>

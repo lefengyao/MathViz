@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "MathViz for DeepSeek",
+  "version": "1.0.0",
+  "description": "在 chat.deepseek.com 里按需插入 MathViz 作图提示词，并把回复里的 mathviz 代码块渲染成数学图形。",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://chat.deepseek.com/*"],
+      "js": ["platform-chrome.js", "prompt.js", "detect.js", "ui-css.js", "content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "sandbox": {
+    "pages": ["viewer.html"]
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["viewer.html", "icons/*.png"],
+      "matches": ["https://chat.deepseek.com/*"]
+    }
+  ],
+  "action": {
+    "default_title": "MathViz 作图（Alt+M）",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
