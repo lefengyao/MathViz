@@ -128,6 +128,7 @@ cd app
 npm test                        # 单元 61 项
 node test/interact.test.mjs     # 交互 15 项（真实 Chromium，合成 pointer 事件）
 node test/verify-testset.mjs    # 能力测试集 19 条
+node test/compliance.mjs reply.txt --render   # 模型回复遵循度打分（静态 + 真渲染）
 ```
 
 另有真机验证链：`app/android/{verify,interact-check,diagnose,grab-q28}.mjs` 通过 CDP 连真机 WebView，覆盖注入、渲染、交互三类检查。

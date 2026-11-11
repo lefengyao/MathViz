@@ -1,6 +1,6 @@
 # MathViz 能力测试集
 
-> 以下 18 条用例已由 `test/verify-testset.mjs` 在真实 Chromium 里逐条跑通（18/18）。
+> 以下 19 条用例已由 `test/verify-testset.mjs` 在真实 Chromium 里逐条跑通（19/19）。
 > 数据源是 `test/testset.mjs`，改用例改那里，然后：
 >
 > ```bash
@@ -19,6 +19,29 @@
 - ✅ 出图、无失败卡片 → 通过
 - ⏳ 工具条显示「N 段未写完」→ 代码不完整被扣住，8 秒后仍残缺才兜底渲染（E3 除外，见负向）
 - ❌ 出现「渲染失败」→ 记下卡片上的中文错误信息，连同用例编号反馈
+
+## 自动看模型有没有守规矩
+
+把模型针对下表问题的**原始回复**整段存成 txt（含 ` ```mathviz ` 围栏，解释文字不用删），交给检查器：
+
+```bash
+node test/compliance.mjs reply.txt            # 静态判定
+node test/compliance.mjs reply.txt --render   # 再真跑一遍渲染
+node test/compliance.mjs --selftest           # 反向验证规则本身
+```
+
+它只干一件事：数模型有没有按协议用运行时。重点抓这四类——
+
+| 编号 | 抓什么 | 为什么算错 |
+|---|---|---|
+| R4 | 自己 `addEventListener('pointermove')`、跑 `requestAnimationFrame`、写 `S.drag` | 拖拽旋转 / 双击复位已内置，自己实现会与运行时抢事件 |
+| R6 | 自己声明 `yaw` / `pitch` / `rotate` | 与运行时的视角打架，重放式重绘会跳 |
+| R7 | 3D 块里 `V.plot`、2D 块里 `S.solid` | 那个模块里没这个函数，必然 TypeError |
+| R3 | 代码里出现 `...` 或「其余省略」 | 扩展按完整性预判扣住，8 秒后才兜底渲染 |
+
+告警（⚠️）不扣通过，但值得记一笔：手算 path、写死 `#1f6feb`、box 宽度偏离 680。
+
+`--selftest` 拿这 19 条正例加 7 条反例反向验证规则：正例一条都不许判违规，反例一条都不许漏。
 
 | 编号 | 能力 | 直接向模型提问（测提示词遵循） |
 |---|---|---|

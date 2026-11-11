@@ -137,6 +137,7 @@ cd app
 npm test                        # 61 unit tests
 node test/interact.test.mjs     # 15 interaction tests (real Chromium, synthetic pointer events)
 node test/verify-testset.mjs    # 19 capability test cases
+node test/compliance.mjs reply.txt --render   # score a model reply (static + real render)
 ```
 
 A real-device verification chain also exists: `app/android/{verify,interact-check,diagnose,grab-q28}.mjs` connect over CDP to the on-device WebView, covering injection, rendering, and interaction.

@@ -185,14 +185,15 @@ mathviz/
 │   ├── interact.test.mjs  15 项交互（旋转/点选/信息栏，真实 Chromium）
 │   ├── testset.mjs        能力测试集数据源（19 条）
 │   ├── verify-testset.mjs 测试集逐条验证
-│   └── gen-testset-md.mjs 生成 testset.md
+│   ├── compliance.mjs     模型回复合规检查（产线/自造交互/截断，可 --render）
+│   ├── gen-testset-md.mjs 生成 testset.md
 │   └── screenshots/       验证截图
 └── dist/                  产物，可删可重建，不要手改
     ├── extension/         加载解压缩扩展时选这个
     └── extension.zip
 ```
 
-`assets/` 是从 `../../MathViz/skill/assets/` 复制的快照（2026-11-11），
+`assets/` 是从 `../skill/assets/` 复制的快照（2026-11-11），
 所以本目录**不依赖 MathViz 项目也能独立构建**。上游运行时升级后，重新复制并跑一次构建即可。
 
 ---
@@ -200,11 +201,12 @@ mathviz/
 ## 开发与验证
 
 ```bash
-cd deepseek-web/mathviz
+cd app
 node build.mjs              # 产出 dist/extension/ + dist/extension.zip
 node test/core.test.mjs     # 61 项：提示词、代码块提取/归一化/分类、协议不自造闭合 fence
 node test/e2e.mjs           # 34 项：真实 Chromium 加载 unpacked 扩展
 node test/interact.test.mjs # 15 项：拖拽旋转、点面高亮、信息栏、图论节点点选
+node test/compliance.mjs --selftest   # 规则自检：19 条正例零误判 / 7 条反例零漏检
 ```
 
 e2e 用本地 mock 的 `chat.deepseek.com` 页面（Playwright `route` 拦截，不联网、不需要登录），
@@ -238,6 +240,15 @@ e2e 用本地 mock 的 `chat.deepseek.com` 页面（Playwright `route` 拦截，
 node test/verify-testset.mjs   # 真实 Chromium 里逐条跑（当前 19/19）
 node test/gen-testset-md.mjs   # 改过 test/testset.mjs 后重新生成 testset.md
 ```
+
+**测模型遵循度**：把模型对表中问题的原始回复存成 txt，交给检查器打分——
+
+```bash
+node test/compliance.mjs reply.txt --render
+```
+
+静态判定产线是否用对（没自造交互轮子、没跨模块乱调 API、代码没截断），`--render` 再把每块真跑一遍。
+分三级：❌ 违规 / ⚠️ 告警 / ✅ 合规，有违规时退出码 1，可直接进回归。规则编号 R1–R13 见 `test/compliance.mjs` 顶部注释。
 
 ---
 
