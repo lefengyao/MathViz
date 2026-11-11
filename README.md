@@ -1,8 +1,15 @@
 # MathViz
 
-让大模型画数学图时**不用手算坐标**，从而更快、更准。
+> MathViz — teach the model to draw math, then render it live: plots, 3D solids, and graphs, right inside the chat.
 
-方向：函数图像、向量与线性代数、平面几何、立体几何、离散数学（图论 / 哈斯图 / 文氏图 / 自动机）。
+**MathViz 做两件事：**
+
+1. **教会大模型画数学图。** 模型手写 SVG 画函数、立体、图论，错误高度集中——忘翻 y 轴、手算采样点、硬编码投影、边穿过节点。MathViz 把一套「作图协议 + 运行时」交给模型：模型只写数学表达式（`x => x*x - 2`、`edges:[["A","B",4]]`），采样、投影、布局、断点、隐藏边判定全部交给代码算。**这不只是给模型一个工具，而是一套可迭代的训练方法**：每一次模型画错，都变成运行时的一层容错或测试集的一条用例——今天修掉的「图例传字符串数组」「点了已释放的节点」，明天就是协议里的明确禁令。
+2. **让 DeepSeek 网页端获得绘图能力。** DeepSeek 网页版没有 Artifacts、没有代码沙箱、没有公式之外的任何图形输出。MathViz 以 MV3 浏览器扩展 + Android WebView 套壳落地：按需把作图协议插进输入框（**一整轮对话只需一次**），再把模型回复里的 ` ```mathviz ` 代码块**就地渲染成图**——不调任何私有接口、不碰登录态，2D 曲线、可拖拽旋转的 3D 立体、可点击高亮的图论，直接长在聊天气泡里。
+
+**一句话：模型只写数学，坐标交给运行时，扩展负责把图插回聊天。**
+
+---
 
 ## 它解决什么
 
@@ -16,7 +23,7 @@
 | 图论边直接连圆心 | 边穿过节点，读者看不出拓扑 |
 | 按英文字宽估中文 | 标签压线或被裁 |
 
-MathViz 的做法是**把坐标计算交给代码**：模型只写数学表达式（`x => x*x - 2`、`[0,0,0]→[2,2,2]`、`edges:[["A","B",4]]`），投影、采样、布局、断点、隐藏边判定全由运行时完成。
+MathViz 的解法是把坐标计算交给代码，并**用真实浏览器持续验证**：模型输出的典型写法被收进复现脚本（如 `test/q10-repro.mjs` 的 10 种图例写法），崩了就给运行时补容错，回归全绿才发版。
 
 ## 三条产线
 
@@ -30,15 +37,26 @@ MathViz 的做法是**把坐标计算交给代码**：模型只写数学表达�
 | 图论 / 哈斯图 / 自动机 | `mk-graph.js` | 布局 + 边避让 |
 | 文氏图 / 邻接矩阵 | `mk-graph.js` 内置 | 区域位置数学精确 |
 
+## 两种形态，一套运行时
+
+| | `app/` 应用版 | `skill/` 技能版 |
+|---|---|---|
+| 载体 | MV3 浏览器扩展（DeepSeek 网页）+ Android WebView 套壳 | WorkBuddy 技能包（对话内画图） |
+| 协议下发 | 面板一键插入输入框，每轮对话一次 | SKILL.md 直接进入系统上下文 |
+| 渲染 | 扩展在代码块原地把 ` ```mathviz ` 渲染成图 | 运行时内联，`show_widget` / HTML 呈现 |
+| 交互 | 3D 拖拽旋转、双击复位、点面/点节点高亮 + 信息栏 | 同左（同一份运行时） |
+
+`app/assets/` 与 `skill/assets/` 是同一份运行时快照，`sync-runtime.mjs` 做 sha256 校验防漂移。
+
 ## 目录
 
 ```
 MathViz/
-├── app/                       【应用版】浏览器扩展 + Android 套壳（原 deepseek-web/mathviz）
+├── app/                       【应用版】浏览器扩展 + Android 套壳
 │   ├── src/                   扩展源码（prompt.js 内含作图协议提示词）
 │   ├── assets/                运行时快照（与 skill/assets 同一份，改后跑 node ../sync-runtime.mjs copy）
-│   ├── android/               手机端：WebView 套壳 + 真机验证脚本
-│   ├── test/                  单元 / 交互 / 能力测试集（19 条）
+│   ├── android/               手机端：WebView 套壳 + 真机 CDP 验证脚本
+│   ├── test/                  单元 61 / 交互 15 / 能力测试集 19 条
 │   ├── testset.md             测试集文档；testset-paste.md 直接粘贴版
 │   └── dist/                  构建产物（extension/ + extension.zip）
 ├── skill/                     可安装的技能包（对话内画图；运行时与 app 共用）
@@ -71,7 +89,15 @@ MathViz/
 
 ## 安装
 
-把 `skill/` 复制到用户级技能目录：
+**DeepSeek 网页扩展**（详见 [`app/README.md`](app/README.md)）：
+
+1. `edge://extensions/`（Chrome 是 `chrome://extensions/`）→ 开「开发人员模式」
+2. 「加载解压缩的扩展」→ 选 `app/dist/extension/`
+3. 打开 <https://chat.deepseek.com>，左下角出现 `∑ MathViz` 即成功
+
+**Android**：构建 `app/android/` 得到 APK 安装；套壳内置同一套运行时，手机浏览器装不了扩展时的替代方案。
+
+**WorkBuddy 技能**：
 
 ```bash
 cp -r skill ~/.workbuddy/skills/math-visualizer
@@ -79,32 +105,37 @@ cp -r skill ~/.workbuddy/skills/math-visualizer
 
 目录名必须与 `SKILL.md` 里的 `name: math-visualizer` 一致，否则技能不会被加载。
 
-## 用起来
+## 用起来（扩展）
 
-**对话内出图**：直接说「画一下 y = x³ − 3x 在 x=1.5 处的切线」，技能会自动选产线、内联运行时、调 `show_widget`。
+1. 点左下角 `∑ MathViz`（或按 **`Alt + M`**）打开面板
+2. 选一个**作图模式**（通用自动选产线 / 函数与2D / 立体与3D / 图论与离散 / 纯SVG）
+3. 点「插入提示词」——协议以明文插进输入框（**你能看到、能改**），你的问题保留在末尾
+4. 正常发送。**一整轮对话只需要给这一次**，后面直接问「再画一个离心率 0.8 的椭圆」就行
+5. 开了新对话，点面板上的「**新对话**」重置，再重新给一次
 
-**要独立文件**：说「导出成 HTML」，会落盘并用 `present_files` 打开。
+图渲染在模型输出的那个代码块内部：原代码收起（点「源码」能看回来），右上角留源码 / 复制 / 重渲染 / 折叠四个小按钮。
 
-**验证一张图有没有问题**：
+**3D 与图论交互**：画布自带拖拽旋转与双击复位；`S.face(pt,{info:'说明'})`、`S.solid(v,f,{faceInfo:[...]})`、图论节点 `info` —— 点击高亮并在底部信息栏显示说明。
+
+**技能版用法**：直接说「画一下 y = x³ − 3x 在 x=1.5 处的切线」，技能会自动选产线、内联运行时出图；要独立文件就说「导出成 HTML」。
+
+## 测试
 
 ```bash
-node skill/scripts/verify.mjs examples/04-cube-hexagon.html
+cd app
+npm test                        # 单元 61 项
+node test/interact.test.mjs     # 交互 15 项（真实 Chromium，合成 pointer 事件）
+node test/verify-testset.mjs    # 能力测试集 19 条
 ```
 
-输出每张图的元素数、虚线数、越界元素、字号过小的文字。有越界就退出码 1。
-
-**打包成单文件**（发给别人、脱离项目目录也能打开）：
-
-```bash
-node skill/scripts/build-standalone.mjs examples/04-cube-hexagon.html
-```
+另有真机验证链：`app/android/{verify,interact-check,diagnose,grab-q28}.mjs` 通过 CDP 连真机 WebView，覆盖注入、渲染、交互三类检查。
 
 ## 验证过的内容
 
-三个运行时不是「写完就算」，每个能力都用无头 Edge 渲染后肉眼核过：
+三个运行时不是「写完就算」，每个能力都用无头浏览器渲染后肉眼核过：
 
 - 2D：`tan` 在渐近线处无假竖线；抛物线比例正确；刻度与轴标签不重叠；文字有描边可读。
-- 3D：立方体正好 3 条隐藏边、四棱锥 5 条，与法线推导一致；正六边形截面在 `yaw 26 / pitch 36` 下清晰可辨（另试了三组视角，`45/35.3` 正对截面但立方体失去立体感）。
+- 3D：立方体正好 3 条隐藏边、四棱锥 5 条，与法线推导一致；正六边形截面在 `yaw 26 / pitch 36` 下清晰可辨。
 - 图论：箭头方向、边避让（高亮路径绕过中间节点）、哈斯图重心排序减交叉、文氏图七个区域标签逐个验算落在正确区域。
 - 全部示例通过 `verify.mjs`。
 
@@ -117,3 +148,7 @@ node skill/scripts/build-standalone.mjs examples/04-cube-hexagon.html
 - **圆锥曲线只给参数化画法**，不给隐式方程求根。`x²+y²=1` 这类要自己转成 `t => [cos t, sin t]`。
 - **中文字宽按 1em 估算**，极窄的西文混排仍可能差 1–2px，靠 `verify.mjs` 兜底。
 - 字体依赖系统 `--font-sans` / `--font-serif`，数学斜体用 serif，某些环境会回落到默认衬线体。
+
+## License
+
+[MIT](LICENSE)
