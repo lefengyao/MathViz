@@ -47,6 +47,26 @@ DeepSeek 只用一个隐藏的 `input[type=file]`，`accept` 是上千个扩展�
 所以 `urisFromResult()` 自己取：先读 `clipData`（多选），再退回 `data`，最后才交给
 `parseResult` 兜底。顺便解决另一个隐患：某些选择器只返回单选 data，这样两种都能拿到。
 
+### 端到端验证记录（v1.1，MuMu 12 / Android 12）
+
+只看「输入框出现缩略图」不算通，必须让**服务端真的收到并解析**。实测发了两条消息：
+
+| 操作 | 发出去的内容 | 模型回复 |
+|---|---|---|
+| 相册选 1 张图 | 一张 DeepSeek 界面截图 | 准确描述了截图内容（问候语、输入框、附件与发送按钮）✓ |
+| 选择文件 | `mv-note.txt`（内含「暗号：蓝鲸-42」） | 答出「蓝鲸-42」，说明文件正文被完整读取 ✓ |
+| 多选 2 张 | 两张图 | 两张同时入框 ✓ |
+| 取消后再点 | — | 菜单正常再弹 ✓ |
+
+图片能被描述、文件正文能被读出，等于同时验证了四段链路：SAF 授权 → WebView 读
+`content://` → 页面构造 `FormData` 上传 → 服务端解析。任何一段断掉都不会有这个结果。
+
+日志里对应的成功返回形如：
+
+```
+附件选择返回 resultCode=-1 uri=1 个 | data=content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2Fmv-note.txt
+```
+
 
 `content.js` 只认 `window.MVPlatform`，不直接碰 `chrome.*`（构建时会校验）。
 模型代码仍在 `sandbox="allow-scripts"` 的 iframe 里执行，viewer 来自本地虚拟域名，
