@@ -47,6 +47,21 @@ DeepSeek 只用一个隐藏的 `input[type=file]`，`accept` 是上千个扩展�
 所以 `urisFromResult()` 自己取：先读 `clipData`（多选），再退回 `data`，最后才交给
 `parseResult` 兜底。顺便解决另一个隐患：某些选择器只返回单选 data，这样两种都能拿到。
 
+### 端到端验证记录（v1.9，MuMu 12 / Android 12，2026-11-12）
+
+装机验证（`adb install -r app-debug.apk` → 启动 → CDP 注入，工具 `diag-card.mjs` / `diag-export.mjs`）：
+
+| 项 | 结果 |
+|---|---|
+| APK 安装 + 启动 | ✓ com.mathviz.app，WebView 正常加载 chat.deepseek.com |
+| 注入 ```mathviz 块 → 卡片渲染 | ✓ 状态「已渲染 1 张」，iframe + viewer.html frame 建立 |
+| 工程图自适应（360px 窄屏，dpr 3） | ✓ viewBox 收到内容大小（35 231 256 185），图不缩角不裁切 |
+| 点「存图」 | ✓ 相册 Pictures/MathViz 落盘 mathviz-*.png（35KB），logcat「存图成功」，Toast 弹出 |
+| 导出 PNG 内容 | ✓ 白底、标题/轮廓/孔位/尺寸标注完整（拉回本机查验） |
+
+注：诊断注入的卡片叠在欢迎语上看似「文字透图」，是注入位置叠放造成的假象；
+真实消息流里卡片在文档流内，不与页面文字重叠。
+
 ### 端到端验证记录（v1.1，MuMu 12 / Android 12）
 
 只看「输入框出现缩略图」不算通，必须让**服务端真的收到并解析**。实测发了两条消息：
