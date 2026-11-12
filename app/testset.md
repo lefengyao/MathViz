@@ -1,6 +1,6 @@
 # MathViz 能力测试集
 
-> 以下 19 条用例已由 `test/verify-testset.mjs` 在真实 Chromium 里逐条跑通（19/19）。
+> 以下 25 条用例已由 `test/verify-testset.mjs` 在真实 Chromium 里逐条跑通（25/25）。
 > 数据源是 `test/testset.mjs`，改用例改那里，然后：
 >
 > ```bash
@@ -41,7 +41,7 @@ node test/compliance.mjs --selftest           # 反向验证规则本身
 
 告警（⚠️）不扣通过，但值得记一笔：手算 path、写死 `#1f6feb`、box 宽度偏离 680。
 
-`--selftest` 拿这 19 条正例加 7 条反例反向验证规则：正例一条都不许判违规，反例一条都不许漏。
+`--selftest` 拿这 25 条正例加 7 条反例反向验证规则：正例一条都不许判违规，反例一条都不许漏。
 
 | 编号 | 能力 | 直接向模型提问（测提示词遵循） |
 |---|---|---|
@@ -64,6 +64,12 @@ node test/compliance.mjs --selftest           # 反向验证规则本身
 | E1 | 一条消息两个代码块（出两张图） | 分别画 sin 曲线和画一个矩形示意图（要求输出两个代码块） |
 | E2 | 公式正文 + 代码块混排 | 先写欧拉公式，再画单位圆上的 e^{iθ} |
 | E3 | 负向：运行时错误要有可读提示 | —（负向用例：故意写错代码，只测扩展的错误提示） |
+| F1 | RC 低通滤波（原理图） | — |
+| F2 | 三极管开关 + LED（三端器件） | — |
+| F3 | PCB 布局（封装 + 走线 + 过孔 + 尺寸） | — |
+| F4 | 工程图：法兰盘（轮廓 + 孔 + 尺寸 + 粗糙度） | — |
+| F5 | 工程图：阶梯轴剖视（剖面线 + 尺寸链） | — |
+| F6 | 负向：端口名写错要给中文提示 | — |
 
 ## 2D 函数
 
@@ -382,6 +388,143 @@ V.label([-1,0],'θ = π',{dx:-8,dy:-10,color:'teal'});
 var V = MK.frame({x:[-2,2], y:[-2,2]});
 document.getElementById('fig').appendChild(V.svg);
 V.plot('这不是函数', {color:'blue'});
+```
+````
+
+**预期**：不渲染失败卡片，而是给出可读的中文错误提示（参数格式不对类）。
+
+## 电路与工程
+
+### F1 RC 低通滤波（原理图）
+
+粘贴整段：
+
+````
+```mathviz
+var C = MK.schematic({box:[40,26,600,330], cell:52, title:'RC 低通滤波'});
+document.getElementById('fig').appendChild(C.svg);
+C.ac({id:'V1', at:[1,2], label:'V1', value:'1 kHz'});
+C.resistor({id:'R1', at:[4,2], label:'R1', value:'1 kΩ'});
+C.cap({id:'C1', at:[7,3], rot:90, label:'C1', value:'100 nF'});
+C.ground({id:'GND', at:[7,5.5]});
+C.wire('V1.r', 'R1.l');
+C.wire('R1.r', 'C1.l');
+C.wire('C1.r', 'GND.t');
+C.wire('V1.l', 'GND.t', {via:[[0,4.5]]});
+C.label([4,0.6], '截止频率 f_c = 1/(2πRC) ≈ 1.6 kHz');
+```
+````
+
+### F2 三极管开关 + LED（三端器件）
+
+粘贴整段：
+
+````
+```mathviz
+var C = MK.schematic({box:[40,26,600,500], cell:42, title:'NPN 三极管驱动 LED'});
+document.getElementById('fig').appendChild(C.svg);
+C.vcc({id:'P1', at:[7,0.5], label:'+5V'});
+C.resistor({id:'R1', at:[7,3], rot:90, label:'R1', value:'330 Ω'});
+C.led({id:'D1', at:[7,5.4], rot:90, label:'D1', value:'红'});
+C.npn({id:'Q1', at:[6,8.4]});
+C.resistor({id:'R2', at:[1.6,8.4], label:'R2', value:'10 kΩ'});
+C.ground({id:'GND', at:[7,11]});
+C.wire('P1.b', 'R1.l');
+C.wire('R1.r', 'D1.l');
+C.wire('D1.r', 'Q1.c');
+C.wire('Q1.e', 'GND.t');
+C.wire('R2.r', 'Q1.b');
+C.label([0.6,8.4], 'v_in', {anchor:'end', dx:-8});
+```
+````
+
+### F3 PCB 布局（封装 + 走线 + 过孔 + 尺寸）
+
+粘贴整段：
+
+````
+```mathviz
+var P = MK.pcb({box:[40,24,600,390], board:[50,32], title:'降压模块 PCB（顶层视角）'});
+document.getElementById('fig').appendChild(P.svg);
+P.outline({r:2});
+P.grid({step:5});
+P.footprint('0805', {at:[12,9], ref:'R1', value:'10k'});
+P.footprint('0805', {at:[12,17], ref:'R2', value:'1k'});
+P.footprint('sot23', {at:[24,10], ref:'Q1', value:'AO3400'});
+P.footprint('soic8', {at:[36,16], ref:'U1', value:'LM358'});
+P.footprint('header', {at:[8,25], n:3, ref:'J1', value:'IN'});
+P.trace([[12,9.95],[18,9.95],[18,10],[22.8,10]], {w:0.5});
+P.route([25,10],[36,14], {w:0.6});
+P.trace([[12,16.05],[20,16.05],[20,18],[36,18]], {w:0.5, layer:'bottom'});
+P.via([20,20], {pad:0.9, drill:0.4});
+P.pad([44,26], {w:3.2, h:3.2, shape:'circle', drill:1.4});
+P.silk('GND', [40.5,29.5]);
+P.dim([0,0],[50,0], {offset:-9});
+P.dim([50,0],[50,32], {offset:9});
+P.legend();
+```
+````
+
+### F4 工程图：法兰盘（轮廓 + 孔 + 尺寸 + 粗糙度）
+
+粘贴整段：
+
+````
+```mathviz
+var E = MK.eng({box:[40,26,600,390], ext:[140,96], title:'法兰盘主视图'});
+document.getElementById('fig').appendChild(E.svg);
+var out = [[20,20],[120,20],[120,76],[20,76]];
+E.poly(out, {close:true});
+E.circle([70,48], 14);
+[[32,32],[108,32],[32,64],[108,64]].forEach(function(c){ E.circle(c,5); E.centerMark(c,{r:8}); });
+E.circle([70,48], 20.5);
+E.line([6,48],[134,48], {style:'center'});
+E.line([70,10],[70,86], {style:'center'});
+E.dimX([20,20],[120,20], {offset:10});
+E.dimY([20,20],[20,76], {offset:14});
+E.dimX([32,32],[108,32], {offset:-17, text:'76'});
+E.dimDia([70,48],[70,34], {dx:-8, dy:2, anchor:'end'});
+E.dimRad([70,48],[84,48], {dx:18, dy:-14});
+E.roughness([92,76], 'Ra 3.2');
+E.leader([108,64], [126,86], '4×φ10 均布');
+E.viewLabel(70, 2, '主视图');
+```
+````
+
+### F5 工程图：阶梯轴剖视（剖面线 + 尺寸链）
+
+粘贴整段：
+
+````
+```mathviz
+var E = MK.eng({box:[40,26,600,390], ext:[170,100], title:'阶梯轴（A—A 剖视）'});
+document.getElementById('fig').appendChild(E.svg);
+var half = [[20,34],[20,52],[60,52],[60,62],[115,62],[115,52],[155,52],[155,34]];
+E.poly(half, {close:true});
+E.hatch(half, {angle:45, gap:4});
+E.line([8,43],[166,43], {style:'center'});
+E.dimX([20,34],[60,34], {offset:12, text:'40'});
+E.dimX([60,34],[115,34], {offset:12, text:'55'});
+E.dimX([115,34],[155,34], {offset:12, text:'40'});
+E.dimY([20,34],[20,52], {offset:14});
+E.dimY([60,52],[60,62], {offset:20});
+E.sectionCut([163,80],[14,80], {label:'A'});
+E.viewLabel(85, 92, 'A—A');
+E.roughness([155,52], 'Ra 1.6');
+```
+````
+
+### F6 负向：端口名写错要给中文提示（负向用例）
+
+粘贴整段：
+
+````
+```mathviz
+var C = MK.schematic({box:[40,26,600,300], cell:50});
+document.getElementById('fig').appendChild(C.svg);
+C.resistor({id:'R1', at:[2,2], label:'R1'});
+C.resistor({id:'R2', at:[5,2], label:'R2'});
+C.wire('R1.左边', 'R2.l');
 ```
 ````
 

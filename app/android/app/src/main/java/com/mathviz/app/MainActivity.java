@@ -4,11 +4,24 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
+import android.content.res.Configuration;
+import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
 import android.util.Log;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -18,13 +31,17 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -59,6 +76,16 @@ public class MainActivity extends Activity {
     private WebView web;
     private String injectScript = "";
 
+    /* —— 全屏（edge-to-edge）适配 ——
+       targetSdk 35 起 Android 15 强制窗口铺到状态栏 / 手势条下面。不接 insets 的症状就是
+       顶部内容被通知栏压住、底部（侧边栏「账号 / 设置」那一栏）被手势条压住。
+       做法：WebView 外面套一层 FrameLayout，按 insets 给这层加内边距；
+       页面真实底色由注入的 JS 上报（chromeColor），系统栏区域刷成同一色 —— 视觉上仍是满屏，
+       但可点区域全在安全区内。 */
+    private FrameLayout root;
+    private int chromeBg = 0xFFFFFFFF;
+    private boolean debuggable;
+
     /* 文件上传：网页里的 <input type=file> 被点击时，WebView 会回调 onShowFileChooser。
        没有这个回调，点附件按钮完全没反应——这是套壳「不能上传」的唯一原因。 */
     private static final int REQ_PICK_ALBUM = 4001;   // 相册图片
@@ -70,8 +97,20 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         WebView.setWebContentsDebuggingEnabled(true);
 
+        chromeBg = defaultChromeBg();
+        debuggable = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        edgeToEdge();
+
+        root = new FrameLayout(this);
+        root.setBackgroundColor(chromeBg);
+
         web = new WebView(this);
-        setContentView(web);
+        web.setBackgroundColor(chromeBg);
+        root.addView(web, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(root);
+        setBarIconAppearance(isLight(chromeBg));   // 视图已挂窗口，这时候设图标黑白才有效
+        applyInsets(root);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -80,6 +119,11 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        /* 关掉 WebView 自带的捏合缩放：图里的双指手势要交给页面自己处理，
+           否则同一组手指会同时缩放整张网页和画布，两个都跟手。 */
+        s.setSupportZoom(false);
+        s.setBuiltInZoomControls(false);
+        s.setDisplayZoomControls(false);
 
         web.addJavascriptInterface(new Bridge(), "MathVizBridge");
         web.setWebViewClient(new HostClient());
@@ -101,6 +145,162 @@ public class MainActivity extends Activity {
             Log.e(TAG, "读 assets 失败: " + name, e);
             return "";
         }
+    }
+
+    /* ========================= 全屏 / 系统栏 ========================= */
+
+    private int defaultChromeBg() {
+        boolean night = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        return night ? 0xFF1A1A1A : 0xFFFFFFFF;
+    }
+
+    /** 窗口铺满整屏，系统栏透明；内容让出多少交给 insets 算 */
+    private void edgeToEdge() {
+        Window w = getWindow();
+        if (Build.VERSION.SDK_INT >= 30) {
+            w.setDecorFitsSystemWindows(false);
+        } else {
+            w.getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            w.setStatusBarContrastEnforced(false);
+            w.setNavigationBarContrastEnforced(false);
+        }
+        if (Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = w.getAttributes();
+            // 刘海屏：允许内容铺到挖孔区域，靠 displayCutout inset 让位
+            lp.layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            w.setAttributes(lp);
+        }
+        w.setStatusBarColor(Color.TRANSPARENT);
+        // Android 10 起手势条本来就透明，别再给导航栏刷色（否则多出一条色带）
+        w.setNavigationBarColor(Build.VERSION.SDK_INT >= 29 ? Color.TRANSPARENT : chromeBg);
+        setBarIconAppearance(isLight(chromeBg));
+    }
+
+    /**
+     * 把状态栏 / 刘海 / 手势条的高度变成容器的内边距。
+     *
+     * 用 padding 而不是给 WebView 设 margin：只有容器真的变小，WebView 的**视口**才会变小，
+     * 页面里 position:fixed 的元素（DeepSeek 的侧边栏抽屉、底部输入框）才会跟着收进来。
+     * 键盘弹出时取 ime 与系统栏高度的较大者，避免和 adjustResize 叠成两份空白。
+     */
+    private void applyInsets(final View host) {
+        host.setOnApplyWindowInsetsListener((v, insets) -> {
+            int l, t, r, b;
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+                l = bars.left;
+                t = bars.top;
+                r = bars.right;
+                b = Math.max(bars.bottom, ime.bottom);
+            } else {
+                l = insets.getSystemWindowInsetLeft();
+                t = insets.getSystemWindowInsetTop();
+                r = insets.getSystemWindowInsetRight();
+                b = insets.getSystemWindowInsetBottom();
+            }
+            /* 调试包可以用 Intent 参数模拟系统栏高度，方便在无状态栏的模拟器上验证排版：
+               adb shell am start -n com.mathviz.app/.MainActivity --ei mvInsetTop 72 --ei mvInsetBottom 96 */
+            if (debuggable) {
+                int ft = getIntent().getIntExtra("mvInsetTop", -1);
+                int fb = getIntent().getIntExtra("mvInsetBottom", -1);
+                if (ft >= 0) t = ft;
+                if (fb >= 0) b = fb;
+            }
+            if (v.getPaddingLeft() != l || v.getPaddingTop() != t
+                    || v.getPaddingRight() != r || v.getPaddingBottom() != b) {
+                v.setPadding(l, t, r, b);
+            }
+            return insets;
+        });
+        host.requestApplyInsets();
+    }
+
+    /** 页面底色变了：系统栏区域刷成同一色，图标黑白跟着切 */
+    private void applyChromeColor(int c) {
+        if ((c >>> 24) == 0) return;              // 全透明：当不了底色
+        chromeBg = c;
+        if (root != null) root.setBackgroundColor(c);
+        if (web != null) web.setBackgroundColor(c);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        else getWindow().setNavigationBarColor(c);
+        setBarIconAppearance(isLight(c));
+    }
+
+    private static boolean isLight(int c) {
+        return Color.luminance(0xFF000000 | (c & 0x00FFFFFF)) > 0.5;
+    }
+
+    private void setBarIconAppearance(boolean lightBackground) {
+        // 视图还没挂到窗口时 PhoneWindow.getInsetsController() 会 NPE，跳过，稍后再设一次
+        if (getWindow().peekDecorView() == null) return;
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController c = getWindow().getInsetsController();
+            if (c == null) return;
+            int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            c.setSystemBarsAppearance(lightBackground ? mask : 0, mask);
+        } else {
+            int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+            if (lightBackground) {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                        | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            }
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+        }
+    }
+
+    /** 解析 JS 给的 #rgb / #rrggbb / rgb() / rgba()；解析不了返回 0 */
+    private static int parseCssColor(String css) {
+        if (css == null) return 0;
+        String s = css.trim().toLowerCase(Locale.ROOT);
+        if (s.isEmpty() || "transparent".equals(s)) return 0;
+        try {
+            if (s.startsWith("#")) {
+                String h = s.substring(1);
+                if (h.length() == 3) {
+                    h = "" + h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1)
+                            + h.charAt(2) + h.charAt(2);
+                }
+                if (h.length() == 6) return 0xFF000000 | Integer.parseInt(h, 16);
+                if (h.length() == 8) return (int) Long.parseLong(h, 16);
+                return 0;
+            }
+            if (s.startsWith("rgb")) {
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("[0-9]*\\.?[0-9]+").matcher(s);
+                double[] v = new double[4];
+                int n = 0;
+                while (m.find() && n < 4) v[n++] = Double.parseDouble(m.group());
+                if (n < 3) return 0;
+                int a = 255;
+                if (n >= 4) {
+                    // CSS4 的 rgb() 允许第四个参数是 0–1 的 alpha
+                    a = v[3] <= 1 ? (int) Math.round(v[3] * 255.0) : clamp255((int) Math.round(v[3]));
+                }
+                if (a == 0) return 0;
+                return (a << 24) | (clamp255((int) Math.round(v[0])) << 16)
+                        | (clamp255((int) Math.round(v[1])) << 8)
+                        | clamp255((int) Math.round(v[2]));
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
+    }
+
+    private static int clamp255(int v) {
+        return v < 0 ? 0 : (v > 255 ? 255 : v);
     }
 
     private class HostClient extends WebViewClient {
@@ -300,9 +500,82 @@ public class MainActivity extends Activity {
     }
 
     private class Bridge {
+        /**
+         * 页面把真实底色报上来（注入脚本会盯着 body 背景变化，深浅色切换时也会重报）。
+         * 原生据此给系统栏区域刷同色，全屏才看不出接缝。
+         */
+        @JavascriptInterface
+        public void chromeColor(String css) {
+            final int c = parseCssColor(css);
+            if (c == 0) return;
+            runOnUiThread(() -> {
+                if (c != chromeBg) applyChromeColor(c);
+            });
+        }
+
         @JavascriptInterface
         public String viewerUrl(String query) {
             return VIEWER + "?" + query;
+        }
+
+        /**
+         * 存图：把沙箱里渲染好的 PNG（data URL）写进系统相册。
+         *
+         * 为什么不让网页自己做 &lt;a download&gt;：WebView 没设 DownloadListener 时这类点击
+         * 什么都不会发生，用户只会觉得按钮是坏的。
+         *
+         * 返回空串 = 成功；非空 = 可直接展示给用户的失败原因。
+         * 这个方法跑在 JavaBridge 线程（不是 UI 线程），磁盘 IO 可以直接做。
+         */
+        @JavascriptInterface
+        public String saveImage(String dataUrl, String name) {
+            if (dataUrl == null || dataUrl.isEmpty()) return "图片数据是空的";
+            try {
+                int comma = dataUrl.indexOf(',');
+                byte[] png = Base64.decode(comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl,
+                        Base64.DEFAULT);
+                if (png.length < 64) return "图片数据不完整";
+
+                String file = safeName(name);
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.Images.Media.DISPLAY_NAME, file);
+                    v.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+                    v.put(MediaStore.Images.Media.RELATIVE_PATH,
+                            Environment.DIRECTORY_PICTURES + "/MathViz");
+                    v.put(MediaStore.Images.Media.IS_PENDING, 1);
+                    Uri uri = getContentResolver()
+                            .insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                    if (uri == null) return "相册拒绝了写入请求";
+                    try (OutputStream os = getContentResolver().openOutputStream(uri)) {
+                        if (os == null) throw new IOException("拿不到相册写入流");
+                        os.write(png);
+                    }
+                    ContentValues done = new ContentValues();
+                    done.put(MediaStore.Images.Media.IS_PENDING, 0);
+                    getContentResolver().update(uri, done, null, null);
+                } else {
+                    File dir = new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "MathViz");
+                    if (!dir.exists() && !dir.mkdirs()) return "建不了目录 " + dir;
+                    try (OutputStream os = new FileOutputStream(new File(dir, file))) {
+                        os.write(png);
+                    }
+                }
+                Log.i(TAG, "存图成功 " + file + "（" + png.length + " 字节）");
+                runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                        "已存到相册 Pictures/MathViz", Toast.LENGTH_SHORT).show());
+                return "";
+            } catch (Exception e) {
+                Log.e(TAG, "存图失败", e);
+                return String.valueOf(e.getMessage());
+            }
+        }
+
+        private String safeName(String name) {
+            String n = (name == null || name.trim().isEmpty()) ? "mathviz" : name.trim();
+            n = n.replaceAll("[\\\\/:*?\"<>|\\s]+", "_");
+            if (!n.toLowerCase(Locale.ROOT).endsWith(".png")) n += ".png";
+            return n;
         }
 
         @JavascriptInterface

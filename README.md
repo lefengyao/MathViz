@@ -27,7 +27,7 @@
 
 MathViz 的解法是把坐标计算交给代码，并**用真实浏览器持续验证**：模型输出的典型写法被收进复现脚本（如 `test/q10-repro.mjs` 的 10 种图例写法），崩了就给运行时补容错，回归全绿才发版。
 
-## 三条产线
+## 六条产线
 
 不是所有图都值得引入运行时。选错产线是最常见的时间浪费。
 
@@ -38,6 +38,22 @@ MathViz 的解法是把坐标计算交给代码，并**用真实浏览器持续�
 | 立体几何 | `mk-3d.js` | 正交投影 + 隐藏边自动判定 |
 | 图论 / 哈斯图 / 自动机 | `mk-graph.js` | 布局 + 边避让 |
 | 文氏图 / 邻接矩阵 | `mk-graph.js` 内置 | 区域位置数学精确 |
+| 电路原理图 | `mk-eng.js` → `MK.schematic` | 元件符号库 + 端口名连线 + 正交走线 + 结点判定 |
+| PCB 布局 | `mk-eng.js` → `MK.pcb` | 毫米坐标 + 封装库 + 45° 自动布线 |
+| 机械工程图 | `mk-eng.js` → `MK.eng` | GB 尺寸箭头 + 剖面线 + 粗糙度/基准/序号 |
+
+后三条是同一份代码里的三个运行时，共用一套画布与主题适配。它们把「图形语法」又往下推了一层：
+模型连坐标都不写了，只写**放什么元件、从哪个端口连到哪个端口、标多少毫米**。
+
+```js
+var C = MK.schematic({box:[40,26,600,330], cell:52, title:'RC 低通滤波'});
+C.ac({id:'V1', at:[1,2], label:'V1', value:'1 kHz'});
+C.resistor({id:'R1', at:[4,2], label:'R1', value:'1 kΩ'});
+C.cap({id:'C1', at:[7,3], rot:90, label:'C1', value:'100 nF'});
+C.ground({id:'GND', at:[7,5.5]});
+C.wire('V1.r','R1.l');  C.wire('R1.r','C1.l');  C.wire('C1.r','GND.t');
+C.report();      // → { ok:true, floating:[], wires:4 }  悬空端口一目了然
+```
 
 ## 两种形态，一套运行时
 
@@ -58,23 +74,28 @@ MathViz/
 │   ├── src/                   扩展源码（prompt.js 内含作图协议提示词）
 │   ├── assets/                运行时快照（与 skill/assets 同一份，改后跑 node ../sync-runtime.mjs copy）
 │   ├── android/               手机端：WebView 套壳 + 真机 CDP 验证脚本
-│   ├── test/                  单元 61 / 交互 15 / 能力测试集 19 条
+│   ├── test/                  单元 67 / 工程运行时 44 / 交互 15 / 能力测试集 25 条
 │   ├── testset.md             测试集文档；testset-paste.md 直接粘贴版
+│   ├── questions.md           提问测试集：105 条纯问题，测模型是否按协议出代码块
 │   └── dist/                  构建产物（extension/ + extension.zip）
 ├── skill/                     可安装的技能包（对话内画图；运行时与 app 共用）
 │   ├── SKILL.md               触发判定 / 产线选择 / 执行流程
-│   ├── references/            七份按主题的作图知识
+│   ├── references/            十份按主题的作图知识
 │   │   ├── mathkit-api.md     运行时完整 API
 │   │   ├── plot-2d.md         函数、参数方程、极坐标、导数、积分
 │   │   ├── geometry.md        平面几何、三角形、圆、圆锥曲线
 │   │   ├── solid-3d.md        投影、多面体、截面、二面角、三视图
 │   │   ├── discrete.md        图论、哈斯图、文氏图、矩阵、自动机、逻辑门
 │   │   ├── linear-algebra.md  向量、投影、张成、变换、特征向量
+│   │   ├── schematic.md       电路：元件库、端口名、走线规则、布局习惯
+│   │   ├── pcb.md             PCB：板框、封装、焊盘/过孔、45° 布线
+│   │   ├── engineering.md     工程图：轮廓、剖视、尺寸链、粗糙度、基准
 │   │   └── checklist.md       十条自检 + 现象对照 + 符号表
-│   ├── assets/                三个运行时（可读源码，约 1600 行）
+│   ├── assets/                四个运行时（可读源码，约 2900 行）
 │   │   ├── mk-core.js
 │   │   ├── mk-3d.js
-│   │   └── mk-graph.js
+│   │   ├── mk-graph.js
+│   │   └── mk-eng.js
 │   └── scripts/
 │       ├── verify.mjs         用无头浏览器跑 getBBox，查越界与字号
 │       └── build-standalone.mjs  把外链脚本内联成单文件
@@ -110,7 +131,7 @@ cp -r skill ~/.workbuddy/skills/math-visualizer
 ## 用起来（扩展）
 
 1. 点左下角 `∑ MathViz`（或按 **`Alt + M`**）打开面板
-2. 选一个**作图模式**（通用自动选产线 / 函数与2D / 立体与3D / 图论与离散 / 纯SVG）
+2. 选一个**作图模式**（通用自动选产线 / 函数与2D / 立体与3D / 图论与离散 / 电路原理图 / PCB 布局 / 机械工程图 / 纯SVG）
 3. 点「插入提示词」——协议以明文插进输入框（**你能看到、能改**），你的问题保留在末尾
 4. 正常发送。**一整轮对话只需要给这一次**，后面直接问「再画一个离心率 0.8 的椭圆」就行
 5. 开了新对话，点面板上的「**新对话**」重置，再重新给一次
@@ -125,9 +146,10 @@ cp -r skill ~/.workbuddy/skills/math-visualizer
 
 ```bash
 cd app
-npm test                        # 单元 61 项
+npm test                        # 单元 67 项 + 工程运行时渲染 44 项（真实 Chromium）
 node test/interact.test.mjs     # 交互 15 项（真实 Chromium，合成 pointer 事件）
-node test/verify-testset.mjs    # 能力测试集 19 条
+node test/verify-testset.mjs    # 能力测试集 25 条
+node test/docsnip.mjs           # 把 skill/references 里的代码块全跑一遍
 node test/compliance.mjs reply.txt --render   # 模型回复遵循度打分（静态 + 真渲染）
 ```
 
@@ -135,17 +157,20 @@ node test/compliance.mjs reply.txt --render   # 模型回复遵循度打分（�
 
 ## 验证过的内容
 
-三个运行时不是「写完就算」，每个能力都用无头浏览器渲染后肉眼核过：
+四个运行时不是「写完就算」，每个能力都用无头浏览器渲染后肉眼核过：
 
 - 2D：`tan` 在渐近线处无假竖线；抛物线比例正确；刻度与轴标签不重叠；文字有描边可读。
 - 3D：立方体正好 3 条隐藏边、四棱锥 5 条，与法线推导一致；正六边形截面在 `yaw 26 / pitch 36` 下清晰可辨。
 - 图论：箭头方向、边避让（高亮路径绕过中间节点）、哈斯图重心排序减交叉、文氏图七个区域标签逐个验算落在正确区域。
+- 电路：端口到端口的自动走线全为正交折线（`eng.test.mjs` 逐段验角度），背对背引脚会绕行而不是穿过元件，T 型交汇正好一个结点，`report().floating` 能抓出每个悬空端口。
+- PCB：`route` 每段只有 0°/45°/90°，`at()` 是纯毫米线性变换，未知封装给中文报错并列出可用封装。
+- 工程图：`dimX` 自动写出的数值等于真实长度、`hatch` 的剖面线条数随 `gap` 变化、中心线是点划线而轮廓是粗实线、y 轴确实向上。
 - 全部示例通过 `verify.mjs`。
 
 ## 已知限制
 
 - **画布宽度固定 680**。这是承载环境的硬约束，改为自适应会破坏所有坐标假设。
-- **内联运行时占 token**。`mk-core.js` 约 500 行，复杂图要再加 3D / 图论模块。简单图请走手写 SVG 产线。这是有意的权衡：一次性多花 1 万 token，换掉几十次坐标算错的重画。
+- **内联运行时占 token**。`mk-core.js` 约 530 行，复杂图要再加 3D / 图论 / 工程图模块（`mk-eng.js` 约 1300 行，含 18 个电路符号、8 种封装、GB 标注）。简单图请走手写 SVG 产线。这是有意的权衡：一次性多花 1 万 token，换掉几十次坐标算错的重画。
 - **3D 只有正交投影**，没有透视。教学图足够，写实渲染不适合。
 - **`force` 布局每次结果不同**，节点多时会乱。要稳定输出用 `circle` 或手动给坐标。
 - **圆锥曲线只给参数化画法**，不给隐式方程求根。`x²+y²=1` 这类要自己转成 `t => [cos t, sin t]`。

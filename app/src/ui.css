@@ -74,7 +74,7 @@ button, select, input { font: inherit; }
 }
 .mv-head {
   display: flex; align-items: center; gap: 6px; padding: 7px 2px 6px;
-  font-size: 12px;
+  font-size: 12px; flex-wrap: wrap; row-gap: 6px;
 }
 .mv-badge {
   padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500;
@@ -85,8 +85,19 @@ button, select, input { font: inherit; }
 .mv-state.mv-err { color: var(--mv-err); }
 .mv-gap { flex: 1; }
 .mv-head button { padding: 4px 9px; }
-.mv-body { padding: 8px; }
+.mv-body { padding: 8px; box-sizing: border-box; }
 .mv-body iframe { display: block; width: 100%; min-height: 80px; border: 0; background: transparent; }
+/* 离屏/折叠时 iframe 被释放（about:blank），原地留一块等高占位，避免页面跳动 */
+.mv-body.mv-paused { position: relative; }
+.mv-body.mv-paused iframe { visibility: hidden; }
+.mv-body.mv-paused::after {
+  content: '图已暂存 · 滚回来自动恢复';
+  position: absolute; left: 8px; right: 8px; top: 8px; bottom: 8px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--mv-line); border-radius: 6px;
+  font-size: 11px; color: var(--mv-sub);
+  background: repeating-linear-gradient(45deg, transparent 0 6px, rgba(127, 127, 127, .05) 6px 12px);
+}
 .mv-src {
   margin: 0; padding: 12px; max-height: 320px; overflow: auto;
   border-top: 1px solid var(--mv-line); background: var(--mv-soft);

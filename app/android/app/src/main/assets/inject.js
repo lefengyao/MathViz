@@ -18,8 +18,91 @@
     save: function (obj) {
       if (!B) return;
       try { B.save(JSON.stringify(obj)); } catch (e) {}
+    },
+    /* 存图：WebView 里 <a download> 不会触发任何东西（没装 DownloadListener），
+       必须交给原生写相册。返回 {ok, msg}，失败原因直接显示给用户。 */
+    saveImage: function (dataUrl, name) {
+      if (!B || typeof B.saveImage !== 'function') {
+        return { ok: false, msg: '这个版本还不支持存图，请更新 APK' };
+      }
+      try {
+        var err = String(B.saveImage(dataUrl, name) || '');
+        if (err) return { ok: false, msg: '保存失败：' + err };
+        return { ok: true, msg: '已存到相册 Pictures/MathViz' };
+      } catch (e) {
+        return { ok: false, msg: '保存失败：' + ((e && e.message) || e) };
+      }
     }
   };
+})(window);
+
+/* ------------------------------------------------------------------
+   页面底色上报
+
+   Android 15 起系统强制全屏（edge-to-edge），状态栏和手势条的区域改由原生涂抹。
+   涂什么色不能写死 —— 得问页面当前是什么底色，否则会多出两条白边／黑边。
+
+   取色方法：在视口顶部中间那一点做命中测试，再沿 DOM 往上找第一个真正不透明的
+   background-color。这样拿到的就是「状态栏下面实际画的是什么色」。
+   深浅色切换、进聊天页、打开抽屉都会改底色，所以定时对一次，变了才发。
+------------------------------------------------------------------ */
+(function (g) {
+  'use strict';
+  var B = g.MathVizBridge;
+  if (!B || typeof B.chromeColor !== 'function') return;
+
+  var last = '';
+
+  function alphaOf(c) {
+    var m = /rgba?\(([^)]+)\)/.exec(c || '');
+    if (!m) return 0;
+    var p = m[1].split(',');
+    return p.length >= 4 ? parseFloat(p[3]) : 1;
+  }
+
+  function toHex(c) {
+    var m = /rgba?\(([^)]+)\)/.exec(c || '');
+    if (!m) return '';
+    var p = m[1].split(',');
+    if (p.length < 3) return '';
+    var out = '#';
+    for (var i = 0; i < 3; i++) {
+      var v = Math.max(0, Math.min(255, Math.round(parseFloat(p[i]) || 0))).toString(16);
+      out += v.length < 2 ? '0' + v : v;
+    }
+    return out;
+  }
+
+  function paintedBackground(el) {
+    while (el && el.nodeType === 1) {
+      var c = getComputedStyle(el).backgroundColor;
+      if (alphaOf(c) > 0.5) return toHex(c);
+      el = el.parentElement;
+    }
+    return '';
+  }
+
+  function report() {
+    var c = '';
+    try {
+      var probe = document.elementFromPoint(Math.round(window.innerWidth / 2), 1);
+      c = paintedBackground(probe)
+        || paintedBackground(document.body)
+        || paintedBackground(document.documentElement);
+    } catch (e) { /* 页面还没就绪，下一轮再说 */ }
+    if (!c) {
+      c = g.matchMedia && g.matchMedia('(prefers-color-scheme: dark)').matches
+        ? '#1a1a1a' : '#ffffff';
+    }
+    if (c === last) return;
+    last = c;
+    try { B.chromeColor(c); } catch (e) {}
+  }
+
+  report();
+  setInterval(report, 1500);
+  document.addEventListener('visibilitychange', report);
+  g.addEventListener('resize', report);
 })(window);
 
 /* ---- prompt.js ---- */
@@ -31,12 +114,15 @@
   var QUESTION = '【我的问题】';
 
   var MODES = [
-    { id: 'off',      label: '关闭',              desc: '不插入提示词' },
-    { id: 'auto',     label: '通用 · 自动选产线',  desc: '模型按题目自己选手写 SVG / 2D / 3D / 图论' },
-    { id: 'plot2d',   label: '函数与 2D',          desc: '强制 MK.frame，曲线、参数方程、向量' },
-    { id: 'solid3d',  label: '立体与 3D',          desc: '强制 MK.space，多面体、截面、空间向量' },
-    { id: 'discrete', label: '图论与离散',          desc: '强制 MK.graph / MK.venn / MK.matrix' },
-    { id: 'svg',      label: '纯 SVG · 简单图',     desc: '零运行时，只适合图元 ≤ 8 的简单示意图' }
+    { id: 'off',       label: '关闭',              desc: '不插入提示词' },
+    { id: 'auto',      label: '通用 · 自动选产线',  desc: '模型按题目自己选手写 SVG / 2D / 3D / 图论 / 电路 / PCB / 工程图' },
+    { id: 'plot2d',    label: '函数与 2D',          desc: '强制 MK.frame，曲线、参数方程、向量' },
+    { id: 'solid3d',   label: '立体与 3D',          desc: '强制 MK.space，多面体、截面、空间向量' },
+    { id: 'discrete',  label: '图论与离散',          desc: '强制 MK.graph / MK.venn / MK.matrix' },
+    { id: 'schematic', label: '电路原理图',          desc: '强制 MK.schematic，元件符号 + 端口连线，自动走线' },
+    { id: 'pcb',       label: 'PCB 布局',            desc: '强制 MK.pcb，板框 + 封装 + 走线 + 过孔，毫米坐标' },
+    { id: 'eng',       label: '机械工程图',          desc: '强制 MK.eng，零件轮廓 + 尺寸 + 剖面线 + 粗糙度' },
+    { id: 'svg',       label: '纯 SVG · 简单图',     desc: '零运行时，只适合图元 ≤ 8 的简单示意图' }
   ];
 
   var API = [
@@ -62,6 +148,30 @@
     '  `nodes` 的 x,y 是画布像素坐标，`fixed:true` 表示不参与自动布局；`edges` 必须是数组，不要写成对象。',
     '  节点可加 `info:\'说明\'`：点击该节点会高亮并显示信息；`G.onPick(fn)` 接收回调。',
     '  `MK.venn({...})`、`MK.matrix({...})` 直接返回 svg；`MK.txt(svg,x,y,text,opt)` 加文字。',
+    '- `MK.schematic({box:[40,26,600,330], cell:48, title, desc})` → 返回 C，**网格坐标**（1 格 = cell 像素）。',
+    '  `C.resistor({id:"R1", at:[列,行], rot:0|90|180|270, label:"R1", value:"10 kΩ"})` 放元件；',
+    '  可用元件：`resistor cap capPolar ind diode led zener npn pnp mosfet opamp battery ac ground vcc switch fuse lamp`。',
+    '  端口：两端件 `l`/`r`；三极管 `b`/`c`/`e`，MOS `g`/`d`/`s`，运放 `n`/`p`/`out`，`ground.t`，`vcc.b`。',
+    '  连线只写端口名：`C.wire("R1.r","Q1.c",{color,w})` —— 正交折线、拐点、结点圆点全由运行时算，',
+    '  **不要自己拼折线坐标**（写死坐标是模型最常犯的错，一改元件位置线就断）。`C.wires([["R1.r","Q1.c"],...])` 批量。',
+    '  需要强制绕路时给必经拐点：`C.wire("V1.l","GND.t",{via:[[0,4.5]]})`（网格坐标）。',
+    '  `C.ic({at,left:["IN","EN"],right:["OUT"],top:["VCC"],bottom:["GND"],label:"U1"})` 画矩形芯片；',
+    '  `C.label([列,行],"v_in",{dx,dy,anchor})`、`C.dot([列,行])`。',
+    '  **自查**：`C.report()` 返回 `{ok,floating:[...]}`，`floating` 是没接线的端口，输出前必须为空。',
+    '- `MK.pcb({box:[40,24,600,380], board:[宽mm,高mm], title})` → 返回 P，**毫米坐标，原点在板左上、y 向下**。',
+    '  `P.outline({r:2})` 板框 / `P.footprint("0805",{at:[x,y],ref:"R1",value:"10k",rot,layer})` 放封装 /',
+    '  `P.trace([[x,y],[x,y],...],{w,layer:"top"|"bottom"})` 画指定折线 / `P.route(a,b,{w})` 自动 45° 折线 /',
+    '  `P.pad([x,y],{w,h,shape:"circle"|"rect",drill})`、`P.via([x,y],{pad,drill})`、`P.silk("文字",[x,y])`、',
+    '  `P.dim/dimX/dimY`、`P.legend([{color:"top"|"bottom"|"pad",text:"顶层"}])`。',
+    '  封装库：`0603 0805 1206 1210 sot23 soic8 dip8 header`（`header` 用 `n` 给针数，`soic8` 可用 `pins`）。',
+    '- `MK.eng({box:[40,30,600,380], ext:[宽mm,高mm], scale, title})` → 返回 E，**毫米坐标，原点在左下、y 向上**。',
+    '  `ext` 只是比例提示（写大写小都会在画完后自动贴合内容，不会被裁或缩到角落），按零件真实外廓估一个就行；',
+    '  `E.line/poly/rect/circle/arc`，线型 `{style:"solid"|"thin"|"dash"|"center"|"phantom"}`；',
+    '  `E.hatch(多边形,{angle:45,gap:4})` 剖面线、`E.centerMark(c,{r})` 中心线十字；',
+    '  `E.dimX/dimY(a,b,{offset,side:"top|bottom|left|right",text})`、`E.dimDia(c,p,{dx,dy,text})`、',
+    '  `E.dimRad(c,p,{dx,dy,text})`、`E.dimAngle(v,p1,p2,{r,text})`；',
+    '  `E.leader(p,to,"文字")`、`E.roughness(p,"Ra 3.2")`、`E.datum(p,"A")`、`E.sectionCut(a,b,{label:"A"})`、',
+    '  `E.balloon(1,p)` 零件序号、`E.viewLabel(x,y,"主视图")`。尺寸数字、箭头长度都按国标由运行时画。',
     '- 颜色名：`blue coral teal amber purple red green pink gray`（用名字，不要写死黑白）。',
     '- 所有坐标参数都是**数学坐标**，不是像素；画布宽固定 680，内容落在 x=40~640。'
   ].join('\n');
@@ -70,8 +180,12 @@
     auto: [
       '## 选哪条产线',
       '图元 ≤ 8 且坐标是简单整数 → 手写 `<svg>`；有曲线、参数方程或刻度 → `MK.frame`；',
-      '有第三个维度 → `MK.space`；涉及布局（图论 / 哈斯图 / 自动机 / 文氏图）→ `MK.graph` / `MK.venn`。',
-      '判断口诀：有曲线走运行时，有第三个维度走运行时，有「布局」走运行时，其余手写。'
+      '有第三个维度 → `MK.space`；涉及布局（图论 / 哈斯图 / 自动机 / 文氏图）→ `MK.graph` / `MK.venn`；',
+      '有元件符号、电源/地、引脚、信号流向 → `MK.schematic`；有板框、封装、焊盘、走线、丝印 → `MK.pcb`；',
+      '机械零件图（轮廓 + 尺寸 + 剖视 + 粗糙度/形位公差）→ `MK.eng`。',
+      '口诀：有曲线走运行时，有第三个维度走运行时，有「布局」走运行时，',
+      '**有元件就别说坐标**（电路），**有焊盘就别说坐标**（PCB），**有尺寸线就别说坐标**（工程图）。',
+      '最常见的错：拿 `MK.frame` 硬凑电路图、用 `V.seg` 一条条手画导线、手算三极管引脚像素位置。'
     ].join('\n'),
     plot2d: [
       '## 本轮产线（必须遵守）',
@@ -100,6 +214,38 @@
       '## 本轮产线（必须遵守）',
       '只输出一个手写 `<svg viewBox="0 0 680 H" xmlns="http://www.w3.org/2000/svg">`，不调用 MK。',
       '每个图元显式写 `fill` 和 `stroke`，连接线写 `fill="none"`，字号 ≥ 11px，字重只用 400/500。'
+    ].join('\n'),
+    schematic: [
+      '## 本轮产线（必须遵守）',
+      '使用 `MK.schematic` 画电路原理图。元件放在**整数格点** `at:[列,行]` 上，旋转只用 `rot:0/90/180/270`。',
+      '连线**只写端口名**：`C.wire("R1.r","Q1.c")`。运行时会走正交折线、合并同网段、在 T 型处打结点；',
+      '不要写 `V.seg` / `path` 拼导线，也不要手算引脚像素位置。',
+      '布局习惯：电源在上（`vcc` 在顶、`ground` 在底）、信号从左流到右、每列元件对齐同一列号，',
+      '元件之间留 2~3 格，导线才不会挤在一起。',
+      '极性器件注意方向：`led`/`diode` 的三角尖端朝电流流出方向（`l`→`r`），`capPolar` 的 `+` 在左侧。',
+      '画完调一次 `var r = C.report();`，若 `r.floating` 不为空说明有端口没接——**改到为空为止**，',
+      '悬空端口在图上就是一根断线头。',
+      '三端器件（`npn`/`pnp`/`mosfet`）的引脚是画在斜线上的，但接线的落点就是 `b/c/e`（`g/d/s`）端口，直接连即可。'
+    ].join('\n'),
+    pcb: [
+      '## 本轮产线（必须遵守）',
+      '使用 `MK.pcb` 画 PCB。**所有参数都是毫米**，原点在板左上角、y 轴向下；板尺寸由 `board:[宽,高]` 给定。',
+      '先 `P.outline()` 画板框，再 `P.footprint(...)` 放封装，最后 `P.trace` / `P.route` 走线。',
+      '两个焊盘之间的连线优先用 `P.route(a,b,{w})`（自动 45° 折线），只有需要指定拐点时才用 `P.trace([...])`。',
+      '走线不能压在别的封装焊盘上，也不能出板框；换层用 `P.via`，底部走线加 `{layer:"bottom"}`。',
+      '位号（`ref`）和值（`value`）由封装自动标在元件上下方，不要再手动 `P.silk` 重复写一遍。',
+      '最后加 `P.legend()` 说明顶层/底层/焊盘的颜色，整体尺寸用 `P.dim` 标在板外。'
+    ].join('\n'),
+    eng: [
+      '## 本轮产线（必须遵守）',
+      '使用 `MK.eng` 画机械工程图。**所有参数都是毫米**，原点在左下角、y 轴向上（和你脑子里的零件坐标一致）。',
+      '轮廓用 `E.poly(pts,{close:true})`，可见轮廓是 `solid`，中心线 `style:"center"`，不可见轮廓 `style:"dash"`。',
+      '剖视图：先画半边轮廓，再 `E.hatch(同一组点,{angle:45,gap:4})` 打剖面线，剖面线只打在被切到的实体里。',
+      '尺寸标注一律用 `E.dimX/dimY/dimDia/dimRad`，**不要用 `E.text` 手写数字**——数字、箭头、尺寸界线都由运行时画。',
+      '尺寸线放在零件外侧（`offset` 给正数，`side` 选远离零件的一侧）；多个尺寸平行排列时 `offset` 依次递增 8~10，',
+      '小尺寸靠内、大尺寸靠外，避免尺寸线和零件轮廓或彼此交叉。',
+      '文字不要压在线上：`E.dimDia/dimRad` 的文字位置用 `dx/dy` 挪开（单位是像素，不是毫米）。',
+      '表面粗糙度 `E.roughness` 标在轮廓线上，基准 `E.datum` 标在基准面上，技术要求/视图名用 `E.viewLabel`。'
     ].join('\n')
   };
 
@@ -146,6 +292,55 @@
       '  <text x="340" y="130" font-size="13" fill="#5F5E5A" text-anchor="middle">O</text>',
       '</svg>',
       '```'
+    ].join('\n'),
+    schematic: [
+      '```mathviz',
+      "var C = MK.schematic({box:[40,26,600,320], cell:52, title:'RC 低通滤波'});",
+      "document.getElementById('fig').appendChild(C.svg);",
+      "C.ac({id:'V1', at:[1,2], label:'V1', value:'1 kHz'});",
+      "C.resistor({id:'R1', at:[4,2], label:'R1', value:'1 kΩ'});",
+      "C.cap({id:'C1', at:[7,3], rot:90, label:'C1', value:'100 nF'});",
+      "C.ground({id:'GND', at:[7,5.5]});",
+      "C.wire('V1.r', 'R1.l');",
+      "C.wire('R1.r', 'C1.l');",
+      "C.wire('C1.r', 'GND.t');",
+      "C.wire('V1.l', 'GND.t', {via:[[0,4.5]]});",
+      "C.label([4,0.6], '截止频率 f_c = 1/(2πRC) ≈ 1.6 kHz');",
+      '```'
+    ].join('\n'),
+    pcb: [
+      '```mathviz',
+      "var P = MK.pcb({box:[40,24,600,360], board:[44,28], title:'降压模块 PCB（顶层视角）'});",
+      "document.getElementById('fig').appendChild(P.svg);",
+      "P.outline({r:2});",
+      "P.grid({step:5});",
+      "P.footprint('0805', {at:[12,9], ref:'R1', value:'10k'});",
+      "P.footprint('sot23', {at:[24,10], ref:'Q1', value:'AO3400'});",
+      "P.footprint('soic8', {at:[34,17], ref:'U1', value:'LM358'});",
+      "P.trace([[12.95,9],[18,9],[18,11],[22.8,11]], {w:0.5});",
+      "P.route([25,11],[30,17], {w:0.6});",
+      "P.via([20,22], {pad:0.9, drill:0.4});",
+      "P.dim([0,0],[44,0], {offset:9});",
+      "P.legend([{color:'top',text:'顶层铜箔'},{color:'pad',text:'焊盘 / 过孔'}]);",
+      '```'
+    ].join('\n'),
+    eng: [
+      '```mathviz',
+      "var E = MK.eng({box:[40,26,600,360], ext:[140,90], title:'支座主视图'});",
+      "document.getElementById('fig').appendChild(E.svg);",
+      "var out = [[20,20],[120,20],[120,70],[20,70]];",
+      "E.poly(out, {close:true});",
+      "E.circle([50,45], 12);",
+      "E.line([10,45],[130,45], {style:'center'});",
+      "E.line([50,10],[50,80], {style:'center'});",
+      "E.dimX([20,20],[120,20], {offset:10});",
+      "E.dimY([20,20],[20,70], {offset:14});",
+      "E.dimDia([50,45],[50,33], {dx:-8, dy:-4, anchor:'end'});",
+      "E.roughness([120,70], 'Ra 3.2');",
+      "E.leader([50,57], [96,78], 'φ24 通孔');",
+      "E.viewLabel(70, 2, '主视图');",
+      "E.balloon(1, [30,32]);",
+      '```'
     ].join('\n')
   };
 
@@ -184,6 +379,15 @@
         + '（`V.svg` / `G.svg` 同理）。漏掉这行不会报错，但图不会出现。',
       '8. 代码块必须**完整可执行**：括号、引号、分号都写全，不要写省略号 `...`、'
         + '占位符或「以下代码省略」，不要在代码块中途截断。',
+      '9. 图要自洽：线不断头、标注不压在线上、文字不出画布（y 不超过 H − 8）；'
+        + '先想清楚「这张图要说明哪一件事」，再挑产线写代码。',
+      '10. 不是每道题都要配图。纯计算、纯文字推导可以不输出代码块；硬凑一张图反而干扰阅读。',
+      '11. 代码块本身就是一段**同步执行一次的脚本**，不要对用户说「环境不支持脚本」。'
+        + '但不要用 `setTimeout` / `setInterval` / `requestAnimationFrame` 做持续动画，也不要自己 '
+        + '`addEventListener` 造交互 —— 卡片离屏会被暂存、导出 PNG 只取静态一帧，动画跑不起来也存不下来；'
+        + '「能拖动 / 能点」一律交给内置能力。被要求 canvas、动画或手写事件时，仍用运行时画一张静态图，'
+        + '再用一句话说明「交互和动画由运行时内置」（canvas 画的像素也进不了导出的 PNG，导出只序列化 SVG），'
+        + '不要说成「不支持脚本」。',
       '',
       API,
       '',
@@ -212,6 +416,7 @@
     MODES: MODES,
     buildPrompt: buildPrompt,
     modeById: modeById,
+    exampleBody: exampleBody,
     hasPrompt: function (text) { return String(text || '').indexOf(MARK) >= 0; },
     /* 换模式时把旧协议整段丢掉，只保留用户真正写的问题 */
     questionOf: function (text) {
@@ -295,7 +500,7 @@
     var first = text.split(/\r?\n/, 1)[0].trim().toLowerCase();
     if (/^```?\s*mathviz\b/.test(first)) return true;
     if (/^mathviz\s*$/.test(first)) return true;
-    return /\bMK\.(?:frame|space|graph|venn|matrix)\s*\(/.test(text) ||
+    return /\bMK\.(?:frame|space|graph|venn|matrix|schematic|pcb|eng)\s*\(/.test(text) ||
       /getElementById\(\s*['"]fig['"]\s*\)/.test(text);
   }
 
@@ -360,7 +565,7 @@
 })(typeof window !== 'undefined' ? window : globalThis);
 
 /* ---- ui-css.js ---- */
-window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全部挂在 Shadow DOM 内 */\n:host {\n  --mv-bg: #ffffff;\n  --mv-fg: #1a1a19;\n  --mv-sub: #6b6a66;\n  --mv-line: #e3e1da;\n  --mv-soft: #f4f3ee;\n  --mv-accent: #4d6bfe;\n  --mv-ok: #0f6e56;\n  --mv-err: #a32d2d;\n  font-family: system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif;\n  font-size: 13px;\n  line-height: 1.5;\n}\n:host([data-theme=\"dark\"]) {\n  --mv-bg: #22221f;\n  --mv-fg: #f1efe8;\n  --mv-sub: #a8a69f;\n  --mv-line: #3a3a36;\n  --mv-soft: #2c2c29;\n  --mv-accent: #85b7eb;\n  --mv-ok: #5dcaa5;\n  --mv-err: #f09595;\n}\n* { box-sizing: border-box; }\n[hidden] { display: none !important; }\nbutton, select, input { font: inherit; }\n\n.mv-bar { display: flex; align-items: center; gap: 8px; }\n.mv-toggle {\n  display: inline-flex; align-items: center; gap: 7px;\n  padding: 7px 13px; border: 1px solid var(--mv-line); border-radius: 999px;\n  background: var(--mv-bg); color: var(--mv-fg); cursor: pointer;\n  box-shadow: 0 2px 10px rgba(0, 0, 0, .12); font-size: 13px;\n}\n.mv-toggle:hover { border-color: var(--mv-accent); }\n.mv-toggle > span { font-weight: 500; }\n.mv-count {\n  padding: 4px 9px; border-radius: 999px; font-size: 11px;\n  background: var(--mv-soft); color: var(--mv-sub);\n}\n.mv-panel {\n  position: absolute; left: 0; bottom: 46px; width: 296px; padding: 14px;\n  border: 1px solid var(--mv-line); border-radius: 12px;\n  background: var(--mv-bg); color: var(--mv-fg);\n  box-shadow: 0 8px 28px rgba(0, 0, 0, .18);\n}\n.mv-row { display: flex; align-items: center; gap: 8px; }\n.mv-row label { font-size: 12px; color: var(--mv-sub); white-space: nowrap; }\n.mv-row select {\n  flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px;\n  border: 1px solid var(--mv-line); background: var(--mv-soft); color: var(--mv-fg);\n  font-size: 12px;\n}\n.mv-desc { margin: 9px 0 12px; font-size: 11px; color: var(--mv-sub); line-height: 1.6; }\n.mv-btns { display: flex; gap: 8px; }\n.mv-btns button, .mv-head button {\n  padding: 6px 11px; border: 1px solid var(--mv-line); border-radius: 8px;\n  background: var(--mv-soft); color: var(--mv-fg); cursor: pointer; font-size: 12px;\n}\n.mv-btns button:hover, .mv-head button:hover { border-color: var(--mv-accent); }\n.mv-btns .mv-primary { background: var(--mv-accent); border-color: var(--mv-accent); color: #fff; }\n.mv-check { display: flex; align-items: center; gap: 7px; margin-top: 12px; font-size: 11px; color: var(--mv-sub); }\n.mv-tip { margin-top: 10px; font-size: 11px; line-height: 1.6; color: var(--mv-sub); }\n.mv-toast {\n  position: absolute; left: 0; bottom: 46px; max-width: 296px; padding: 9px 12px;\n  border-radius: 8px; background: var(--mv-fg); color: var(--mv-bg); font-size: 12px;\n  box-shadow: 0 4px 16px rgba(0, 0, 0, .2);\n}\n\n.mv-card {\n  max-width: 720px; overflow: hidden; border: 0;\n  border-radius: 8px; background: transparent; color: var(--mv-fg);\n}\n.mv-head {\n  display: flex; align-items: center; gap: 6px; padding: 7px 2px 6px;\n  font-size: 12px;\n}\n.mv-badge {\n  padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500;\n  background: var(--mv-soft); color: var(--mv-accent);\n}\n.mv-state { font-size: 11px; color: var(--mv-sub); }\n.mv-state.mv-ok { color: var(--mv-ok); }\n.mv-state.mv-err { color: var(--mv-err); }\n.mv-gap { flex: 1; }\n.mv-head button { padding: 4px 9px; }\n.mv-body { padding: 8px; }\n.mv-body iframe { display: block; width: 100%; min-height: 80px; border: 0; background: transparent; }\n.mv-src {\n  margin: 0; padding: 12px; max-height: 320px; overflow: auto;\n  border-top: 1px solid var(--mv-line); background: var(--mv-soft);\n  color: var(--mv-fg); font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace;\n  white-space: pre-wrap; word-break: break-all;\n}\n\n.mv-sess { margin: 0 0 10px; font-size: 11px; line-height: 1.5; color: var(--mv-sub); }\n.mv-sess.mv-sess-on { color: var(--mv-ok); }\n\n/* 就地渲染：宿主直接挂在原来的 <pre> 里，不再套一层独立卡片 */\n:host([data-inline]) .mv-card { border: 0; border-radius: 0; background: transparent; }\n:host([data-inline]) .mv-head { border-bottom: 0; padding: 2px 2px 6px; }\n:host([data-inline]) .mv-badge { display: none; }\n:host([data-inline]) .mv-body { padding: 0; }\n\n/* 手机窄屏：工具条移到右上角（左下角会盖住输入框的按钮），面板向下展开 */\n@media (max-width: 480px) {\n  :host(.mv-toolbar-host) {\n    top: 10px !important; right: 12px !important;\n    left: auto !important; bottom: auto !important;\n  }\n  .mv-panel {\n    width: calc(100vw - 24px); max-width: 320px;\n    top: 46px; bottom: auto; right: 0; left: auto;\n  }\n  .mv-toast {\n    max-width: calc(100vw - 24px);\n    top: 46px; bottom: auto; right: 0; left: auto;\n  }\n  .mv-toggle { padding: 10px 16px; }\n  .mv-btns button, .mv-head button, .mv-row select { min-height: 38px; padding: 8px 12px; }\n  .mv-check input { width: 18px; height: 18px; }\n  .mv-card { max-width: 100%; }\n}\n";
+window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全部挂在 Shadow DOM 内 */\n:host {\n  --mv-bg: #ffffff;\n  --mv-fg: #1a1a19;\n  --mv-sub: #6b6a66;\n  --mv-line: #e3e1da;\n  --mv-soft: #f4f3ee;\n  --mv-accent: #4d6bfe;\n  --mv-ok: #0f6e56;\n  --mv-err: #a32d2d;\n  font-family: system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif;\n  font-size: 13px;\n  line-height: 1.5;\n}\n:host([data-theme=\"dark\"]) {\n  --mv-bg: #22221f;\n  --mv-fg: #f1efe8;\n  --mv-sub: #a8a69f;\n  --mv-line: #3a3a36;\n  --mv-soft: #2c2c29;\n  --mv-accent: #85b7eb;\n  --mv-ok: #5dcaa5;\n  --mv-err: #f09595;\n}\n* { box-sizing: border-box; }\n[hidden] { display: none !important; }\nbutton, select, input { font: inherit; }\n\n.mv-bar { display: flex; align-items: center; gap: 8px; }\n.mv-toggle {\n  display: inline-flex; align-items: center; gap: 7px;\n  padding: 7px 13px; border: 1px solid var(--mv-line); border-radius: 999px;\n  background: var(--mv-bg); color: var(--mv-fg); cursor: pointer;\n  box-shadow: 0 2px 10px rgba(0, 0, 0, .12); font-size: 13px;\n}\n.mv-toggle:hover { border-color: var(--mv-accent); }\n.mv-toggle > span { font-weight: 500; }\n.mv-count {\n  padding: 4px 9px; border-radius: 999px; font-size: 11px;\n  background: var(--mv-soft); color: var(--mv-sub);\n}\n.mv-panel {\n  position: absolute; left: 0; bottom: 46px; width: 296px; padding: 14px;\n  border: 1px solid var(--mv-line); border-radius: 12px;\n  background: var(--mv-bg); color: var(--mv-fg);\n  box-shadow: 0 8px 28px rgba(0, 0, 0, .18);\n}\n.mv-row { display: flex; align-items: center; gap: 8px; }\n.mv-row label { font-size: 12px; color: var(--mv-sub); white-space: nowrap; }\n.mv-row select {\n  flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px;\n  border: 1px solid var(--mv-line); background: var(--mv-soft); color: var(--mv-fg);\n  font-size: 12px;\n}\n.mv-desc { margin: 9px 0 12px; font-size: 11px; color: var(--mv-sub); line-height: 1.6; }\n.mv-btns { display: flex; gap: 8px; }\n.mv-btns button, .mv-head button {\n  padding: 6px 11px; border: 1px solid var(--mv-line); border-radius: 8px;\n  background: var(--mv-soft); color: var(--mv-fg); cursor: pointer; font-size: 12px;\n}\n.mv-btns button:hover, .mv-head button:hover { border-color: var(--mv-accent); }\n.mv-btns .mv-primary { background: var(--mv-accent); border-color: var(--mv-accent); color: #fff; }\n.mv-check { display: flex; align-items: center; gap: 7px; margin-top: 12px; font-size: 11px; color: var(--mv-sub); }\n.mv-tip { margin-top: 10px; font-size: 11px; line-height: 1.6; color: var(--mv-sub); }\n.mv-toast {\n  position: absolute; left: 0; bottom: 46px; max-width: 296px; padding: 9px 12px;\n  border-radius: 8px; background: var(--mv-fg); color: var(--mv-bg); font-size: 12px;\n  box-shadow: 0 4px 16px rgba(0, 0, 0, .2);\n}\n\n.mv-card {\n  max-width: 720px; overflow: hidden; border: 0;\n  border-radius: 8px; background: transparent; color: var(--mv-fg);\n}\n.mv-head {\n  display: flex; align-items: center; gap: 6px; padding: 7px 2px 6px;\n  font-size: 12px; flex-wrap: wrap; row-gap: 6px;\n}\n.mv-badge {\n  padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500;\n  background: var(--mv-soft); color: var(--mv-accent);\n}\n.mv-state { font-size: 11px; color: var(--mv-sub); }\n.mv-state.mv-ok { color: var(--mv-ok); }\n.mv-state.mv-err { color: var(--mv-err); }\n.mv-gap { flex: 1; }\n.mv-head button { padding: 4px 9px; }\n.mv-body { padding: 8px; box-sizing: border-box; }\n.mv-body iframe { display: block; width: 100%; min-height: 80px; border: 0; background: transparent; }\n/* 离屏/折叠时 iframe 被释放（about:blank），原地留一块等高占位，避免页面跳动 */\n.mv-body.mv-paused { position: relative; }\n.mv-body.mv-paused iframe { visibility: hidden; }\n.mv-body.mv-paused::after {\n  content: '图已暂存 · 滚回来自动恢复';\n  position: absolute; left: 8px; right: 8px; top: 8px; bottom: 8px;\n  display: flex; align-items: center; justify-content: center;\n  border: 1px dashed var(--mv-line); border-radius: 6px;\n  font-size: 11px; color: var(--mv-sub);\n  background: repeating-linear-gradient(45deg, transparent 0 6px, rgba(127, 127, 127, .05) 6px 12px);\n}\n.mv-src {\n  margin: 0; padding: 12px; max-height: 320px; overflow: auto;\n  border-top: 1px solid var(--mv-line); background: var(--mv-soft);\n  color: var(--mv-fg); font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace;\n  white-space: pre-wrap; word-break: break-all;\n}\n\n.mv-sess { margin: 0 0 10px; font-size: 11px; line-height: 1.5; color: var(--mv-sub); }\n.mv-sess.mv-sess-on { color: var(--mv-ok); }\n\n/* 就地渲染：宿主直接挂在原来的 <pre> 里，不再套一层独立卡片 */\n:host([data-inline]) .mv-card { border: 0; border-radius: 0; background: transparent; }\n:host([data-inline]) .mv-head { border-bottom: 0; padding: 2px 2px 6px; }\n:host([data-inline]) .mv-badge { display: none; }\n:host([data-inline]) .mv-body { padding: 0; }\n\n/* 手机窄屏：工具条移到右上角（左下角会盖住输入框的按钮），面板向下展开 */\n@media (max-width: 480px) {\n  :host(.mv-toolbar-host) {\n    top: 10px !important; right: 12px !important;\n    left: auto !important; bottom: auto !important;\n  }\n  .mv-panel {\n    width: calc(100vw - 24px); max-width: 320px;\n    top: 46px; bottom: auto; right: 0; left: auto;\n  }\n  .mv-toast {\n    max-width: calc(100vw - 24px);\n    top: 46px; bottom: auto; right: 0; left: auto;\n  }\n  .mv-toggle { padding: 10px 16px; }\n  .mv-btns button, .mv-head button, .mv-row select { min-height: 38px; padding: 8px 12px; }\n  .mv-check input { width: 18px; height: 18px; }\n  .mv-card { max-width: 100%; }\n}\n";
 
 /* ---- content.js ---- */
 /* MathViz for DeepSeek —— content script
@@ -517,18 +722,38 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
   /* 沙箱卡片                                                          */
   /* ---------------------------------------------------------------- */
 
+  /* 所有卡片共用一张已解析的样式表：每张卡各插一份 <style>，200 张图就是 200 次
+     CSS 解析、约 2MB 的重复文本；adoptedStyleSheets 只解析一次，各 shadow 共用。 */
+  var cssSheet = null;
+  function sharedSheet() {
+    if (cssSheet !== null) return cssSheet;
+    cssSheet = false;
+    try {
+      var sh = new CSSStyleSheet();
+      sh.replaceSync(CSS);
+      cssSheet = sh;
+    } catch (e) { cssSheet = false; }
+    return cssSheet;
+  }
+  function styleShadow(sr) {
+    var sh = sharedSheet();
+    if (sh) { try { sr.adoptedStyleSheets = [sh]; return; } catch (e) {} }
+    sr.insertAdjacentHTML('afterbegin', '<style>' + CSS + '</style>');
+  }
+
   function cardMarkup() {
     return '<div class="mv-card" data-mv-ui="1">' +
       '<div class="mv-head">' +
         '<span class="mv-badge">MathViz</span>' +
         '<span class="mv-state" data-a="state">等待渲染…</span>' +
         '<span class="mv-gap"></span>' +
+        '<button type="button" data-a="png">存图</button>' +
         '<button type="button" data-a="source">源码</button>' +
         '<button type="button" data-a="copy">复制</button>' +
         '<button type="button" data-a="reload">重渲染</button>' +
         '<button type="button" data-a="fold">折叠</button>' +
       '</div>' +
-      '<div class="mv-body"><iframe title="MathViz 图形" sandbox="allow-scripts"></iframe></div>' +
+      '<div class="mv-body"></div>' +
       '<pre class="mv-src" hidden></pre>' +
     '</div>';
   }
@@ -537,28 +762,40 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
     var id = 'mv' + (++seq) + '-' + digest;
     var host = el('div', 'mv-card-host');
     var inline = anchor.tagName === 'PRE';
-    host.style.cssText = inline ? 'display:block;margin:0;' : 'display:block;margin:12px 0;';
+    /* content-visibility:auto —— 屏幕外的卡片连样式/布局都跳过，长会话滚回顶部时
+       不用把几十张卡的 shadow 树重新算一遍；contain-intrinsic-size 的 auto 会记住
+       上次的真实高度，滚动条不会跳。旧内核不认这两条，忽略即可。 */
+    host.style.cssText = (inline ? 'display:block;margin:0;' : 'display:block;margin:12px 0;')
+      + 'content-visibility:auto;contain-intrinsic-size:auto 360px;';
     host.setAttribute('data-mv-ui', '1');
     host.setAttribute('data-theme', theme);
     if (inline) host.setAttribute('data-inline', '1');
     var sr = host.attachShadow({ mode: 'open' });
-    sr.innerHTML = '<style>' + CSS + '</style>' + cardMarkup();
+    sr.innerHTML = cardMarkup();
+    styleShadow(sr);
 
     var rec = {
       id: id, host: host, sr: sr, anchor: anchor, code: code, kind: kind,
       inline: inline,
       digest: digest, sent: false, sentCode: '', src: sr.querySelector('.mv-src'),
-      iframe: sr.querySelector('iframe'), state: sr.querySelector('[data-a="state"]'),
-      body: sr.querySelector('.mv-body')
+      /* iframe 是按需创建的：一个沙箱 iframe 就是一份独立 document + JS 上下文，
+         40 张图全建出来就多 40 个 frame。只有真要渲染时才插入，暂存时整块移除。 */
+      iframe: null, state: sr.querySelector('[data-a="state"]'),
+      body: sr.querySelector('.mv-body'),
+      /* 渲染生命周期：排队 → 在途 → 完成；离屏/折叠时可被「暂存」释放 iframe */
+      queued: false, inflight: false, rendered: false, paused: false, armed: false,
+      folded: false, offscreen: false, stuckTimer: 0
     };
     rec.src.textContent = code;
-    rec.iframe.addEventListener('load', function () { renderInto(rec); });
 
     sr.addEventListener('click', function (e) {
       var btn = e.target && e.target.closest ? e.target.closest('button[data-a]') : null;
       if (!btn) return;
       var a = btn.getAttribute('data-a');
-      if (a === 'source') {
+      if (a === 'png') {
+        if (rec.paused) { resume(rec); toast('图已从暂存恢复，稍等一下再点「存图」'); return; }
+        exportCard(rec, btn);
+      } else if (a === 'source') {
         var show = rec.src.hasAttribute('hidden');
         if (show) rec.src.removeAttribute('hidden'); else rec.src.setAttribute('hidden', '');
         btn.textContent = show ? '收起源码' : '源码';
@@ -575,31 +812,260 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
           var m = mounted.get(rec.anchor);
           if (m) mounted.set(rec.anchor, { digest: rec.digest, id: m.id });
         }
+        rec.paused = false;
+        rec.rendered = false;
         rec.sent = false;
         openViewer(rec);
       } else if (a === 'fold') {
         var folded = rec.body.hasAttribute('hidden');
-        if (folded) rec.body.removeAttribute('hidden'); else rec.body.setAttribute('hidden', '');
-        btn.textContent = folded ? '折叠' : '展开';
+        if (folded) {
+          rec.body.removeAttribute('hidden');
+          rec.folded = false;
+          btn.textContent = '折叠';
+          if (rec.paused) {
+            rec.paused = false;
+            rec.body.classList.remove('mv-paused');
+            rec.body.style.height = '';
+          }
+          if (!rec.rendered) enqueue(rec);
+        } else {
+          rec.body.setAttribute('hidden', '');
+          rec.folded = true;
+          btn.textContent = '展开';
+          /* 折叠即释放：iframe 现在看不见了，没必要继续占着一个 JS 上下文 */
+          pause(rec);
+        }
       }
     });
 
     cards.set(id, rec);
-    openViewer(rec);
+    observe(rec);
+    enqueue(rec);
     return rec;
   }
 
+  /* ---------------------------------------------------------------- */
+  /* 渲染调度                                                          */
+  /*   ① 一次最多让 2 个 iframe 开工 —— 20 张图同时 new Function 会在    */
+  /*      手机上造成 300ms 级的单次卡顿；分批后峰值被摊平。              */
+  /*   ② 视口近的先画。离屏 2400px 外的卡片不画；已经画过的离开就把     */
+  /*      iframe 换成 about:blank 释放掉（一张图约 8MB），滚回来重建。    */
+  /*                                                                  */
+  /*   卡片的「远/近」一律由 distToViewport() 实测决定，IntersectionObserver */
+  /*   只当「视口可能变了」的触发器。早先直接读 isIntersecting 有两个坑： */
+  /*   消息列表在内部滚动容器里时它会被祖先裁剪切得忽真忽假，且滚动回来的  */
+  /*   那一帧不一定有回调 —— 结果就是图卡在「渲染中…」再也不出来。        */
+  /* ---------------------------------------------------------------- */
+  var MAX_INFLIGHT = 2;
+  var OFFSCREEN = 2400;   /* 超出可视范围这么多，就先不画、已画的释放掉 */
+  var queue = [];
+  var inflight = 0;
+  var pumpTimer = 0;
+  var evalTimer = 0;
+  var io = null;
+
+  function distToViewport(rec) {
+    var r = rec.host.getBoundingClientRect();
+    var vh = window.innerHeight || 800;
+    if (r.bottom <= 0) return -r.bottom;
+    if (r.top >= vh) return r.top - vh;
+    return 0;
+  }
+
+  function schedulePump() {
+    if (pumpTimer) return;
+    var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+    pumpTimer = raf(function () { pumpTimer = 0; pump(); });
+  }
+
+
+  function pump() {
+    if (!queue.length) return;
+    queue.sort(function (a, b) { return distToViewport(a) - distToViewport(b); });
+    while (inflight < MAX_INFLIGHT && queue.length) {
+      var rec = queue.shift();
+      rec.queued = false;
+      if (!rec.host.isConnected || rec.folded) continue;
+      /* 远的直接从队列丢掉（不是挂回去），由 evaluate() 在它靠近时重新入队。
+         挂回队列会让这张卡的 queued 一直为真，之后 enqueue 全被挡掉。
+         状态要一起退回「等待渲染…」，否则界面上会留一堆假的「排队中」。 */
+      if (distToViewport(rec) > OFFSCREEN) {
+        rec.state.textContent = '等待渲染…';
+        rec.state.className = 'mv-state';
+        continue;
+      }
+      openViewer(rec);
+    }
+  }
+
+  function enqueue(rec) {
+    if (!rec || rec.folded) return;
+    if (rec.queued) { schedulePump(); return; }
+    if (rec.inflight || rec.rendered || rec.paused) return;
+    if (distToViewport(rec) > OFFSCREEN) {
+      /* 等 evaluate() 把它带近；状态别停在「排队中…」——它其实没在排队 */
+      if (!rec.rendered && rec.state.textContent !== '等待渲染…') {
+        rec.state.textContent = '等待渲染…';
+        rec.state.className = 'mv-state';
+      }
+      return;
+    }
+    rec.queued = true;
+    rec.state.textContent = '排队中…';
+    rec.state.className = 'mv-state';
+    queue.push(rec);
+    schedulePump();
+  }
+
+  function dequeue(rec) {
+    var i = queue.indexOf(rec);
+    if (i >= 0) { queue.splice(i, 1); rec.queued = false; }
+  }
+
+  function finish(rec) {
+    if (!rec.inflight) return;
+    rec.inflight = false;
+    inflight = Math.max(0, inflight - 1);
+    schedulePump();
+  }
+
+  /* 释放：把 iframe 的文档清掉，高度锁住，避免下方内容跳动 */
+  function pause(rec) {
+    if (!rec || rec.paused) return;
+    dequeue(rec);
+    if (!rec.rendered && !rec.inflight) {
+      /* 还没画过：只是退回「等滚动」，别把状态留在「渲染中…」 */
+      if (rec.state.textContent !== '等待渲染…') {
+        rec.state.textContent = '等待渲染…';
+        rec.state.className = 'mv-state';
+      }
+      return;
+    }
+    var h = 0;
+    try { h = rec.body.getBoundingClientRect().height || 0; } catch (e) {}
+    finish(rec);
+    if (rec.stuckTimer) { clearTimeout(rec.stuckTimer); rec.stuckTimer = 0; }
+    rec.paused = true;
+    rec.rendered = false;
+    rec.sent = false;
+    rec.sentCode = '';
+    dropFrame(rec);
+    rec.body.classList.add('mv-paused');
+    /* 高度锁在释放前，占位图和原来一样高，下方内容不会跳 */
+    if (h > 40) rec.body.style.height = Math.round(h) + 'px';
+    rec.state.textContent = '已暂存';
+    rec.state.className = 'mv-state';
+  }
+
+  function resume(rec) {
+    rec.offscreen = false;
+    if (rec.paused) {
+      rec.paused = false;
+      rec.body.classList.remove('mv-paused');
+      rec.body.style.height = '';
+      rec.state.textContent = '排队中…';
+      rec.state.className = 'mv-state';
+    }
+    if (rec.queued) { schedulePump(); return; }
+    if (!rec.rendered && !rec.inflight) enqueue(rec);
+  }
+
+  /* 所有「视口可能变了」的场合都走这里：重算距离，该画的画、该释放的释放。
+     幂等，重复调用没有副作用。 */
+  function evaluate() {
+    cards.forEach(function (rec) {
+      if (!rec.host.isConnected) return;
+      if (rec.folded) return;      /* 折叠的已经被 pause 过了，别再动它的状态 */
+      var d = distToViewport(rec);
+      if (d <= OFFSCREEN) {
+        if (rec.offscreen || rec.paused) resume(rec);
+        else if (rec.queued) schedulePump();
+        else if (!rec.rendered && !rec.inflight) enqueue(rec);
+      } else {
+        rec.offscreen = true;
+        if (rec.rendered || rec.inflight) pause(rec);
+        else {
+          dequeue(rec);
+          if (rec.state.textContent === '排队中…') {
+            rec.state.textContent = '等待渲染…';
+            rec.state.className = 'mv-state';
+          }
+        }
+      }
+    });
+    schedulePump();
+  }
+
+  function scheduleEval() {
+    if (evalTimer) return;
+    var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+    evalTimer = raf(function () { evalTimer = 0; evaluate(); });
+  }
+
+  function observe(rec) {
+    if (typeof IntersectionObserver !== 'function') return;   /* 老内核：退化成全部渲染 */
+    if (!io) {
+      /* 只看「有没有变化」，判定交给 distToViewport —— 见文件头那段注释 */
+      io = new IntersectionObserver(function () { scheduleEval(); },
+        { rootMargin: '2400px 0px 2400px 0px' });
+    }
+    rec.host.__mvRec = rec;
+    rec.observed = true;
+    try { io.observe(rec.host); } catch (e) {}
+  }
+
+  function unobserve(rec) {
+    if (io && rec.observed) { try { io.unobserve(rec.host); } catch (e) {} }
+    rec.observed = false;
+    rec.host.__mvRec = null;
+  }
+
+  /* 按需创建沙箱 iframe。页面里同时活着的 iframe 数量直接决定内存与切回标签页
+     时的恢复成本，所以「建卡」不等于「建 frame」——只有真要画时才插进来。 */
+  function ensureFrame(rec) {
+    if (rec.iframe) return rec.iframe;
+    var f = document.createElement('iframe');
+    f.title = 'MathViz 图形';
+    f.setAttribute('sandbox', 'allow-scripts');
+    f.addEventListener('load', function () { renderInto(rec); });
+    rec.body.appendChild(f);
+    rec.iframe = f;
+    return f;
+  }
+
+  /* 移除 = 连 document 一起释放；只换 src 到 about:blank 仍会留一个 frame */
+  function dropFrame(rec) {
+    if (!rec.iframe) return;
+    try { rec.iframe.remove(); } catch (e) {}
+    rec.iframe = null;
+    rec.armed = false;
+  }
+
   function openViewer(rec) {
+    dequeue(rec);
+    if (!rec.inflight) { rec.inflight = true; inflight++; }
+    rec.paused = false;
+    rec.body.classList.remove('mv-paused');
+    rec.body.style.height = '';
     rec.host.setAttribute('data-theme', theme);
-    rec.state.textContent = '等待渲染…';
+    rec.state.textContent = '渲染中…';
     rec.state.className = 'mv-state';
     rec.sent = false;
     rec.sentCode = '';
+    /* 沙箱页没回话时别把并发名额永久占住，否则后面的图全卡在队列里 */
+    if (rec.stuckTimer) clearTimeout(rec.stuckTimer);
+    rec.stuckTimer = setTimeout(function () {
+      if (rec.inflight) { rec.state.textContent = '渲染超时'; finish(rec); }
+    }, 9000);
     var url = Platform.viewerUrl('theme=' + theme + '&id=' + encodeURIComponent(rec.id));
-    rec.iframe.setAttribute('src', url);
+    var f = ensureFrame(rec);
+    rec.armed = true;      /* 只有这一次 setAttribute 之后的 load 才是真的沙箱页 */
+    f.setAttribute('src', url);
   }
 
   function renderInto(rec) {
+    if (!rec.armed) return;      /* iframe 刚插进 DOM 时加载 about:blank 也会触发 load */
+    if (rec.paused || rec.folded) return;
     if (rec.sent && rec.sentCode === rec.code) return;
     rec.sent = true;
     rec.sentCode = rec.code;
@@ -611,6 +1077,58 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
     } catch (e) {
       rec.state.textContent = '沙箱通信失败';
     }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* 存图：图在沙箱 iframe 里，父页面拿不到它的 DOM，只能让它自己转 PNG  */
+  /* ---------------------------------------------------------------- */
+
+  function stamp() {
+    var d = new Date();
+    var p = function (v) { return (v < 10 ? '0' : '') + v; };
+    return String(d.getFullYear()) + p(d.getMonth() + 1) + p(d.getDate())
+      + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+
+  function exportCard(rec, btn) {
+    if (rec.busy) return;
+    if (!rec.iframe || !rec.rendered) {
+      /* 还没画（离屏卡片可能从来没启动过），先让它画出来 */
+      toast('这张图还没渲染，正在开始画，稍等一下再点「存图」');
+      enqueue(rec);
+      return;
+    }
+    rec.busy = true;
+    rec.pngBtn = btn;
+    rec.pngLabel = btn.textContent;
+    btn.textContent = '生成中…';
+    try {
+      rec.iframe.contentWindow.postMessage({
+        __mv: true, type: 'mv:export', id: rec.id, scale: 2
+      }, '*');
+    } catch (e) {
+      finishExport(rec, '沙箱通信失败，先点一下「重渲染」');
+      return;
+    }
+    clearTimeout(rec.pngTimer);
+    rec.pngTimer = setTimeout(function () {
+      finishExport(rec, '导出超时了，先点「重渲染」再存');
+    }, 8000);
+  }
+
+  function finishExport(rec, msg) {
+    rec.busy = false;
+    clearTimeout(rec.pngTimer);
+    if (rec.pngBtn) rec.pngBtn.textContent = rec.pngLabel || '存图';
+    if (msg) toast(msg);
+  }
+
+  function saveImage(dataUrl) {
+    var name = 'mathviz-' + stamp() + '.png';
+    if (Platform && typeof Platform.saveImage === 'function') {
+      return Platform.saveImage(dataUrl, name) || { ok: false, msg: '存图失败' };
+    }
+    return { ok: false, msg: '当前平台不支持存图' };
   }
 
   function copyText(text, btn) {
@@ -767,6 +1285,9 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
     cards.forEach(function (rec, id) {
       if (!rec.host.isConnected || !rec.anchor || !rec.anchor.isConnected) {
         try { rec.host.remove(); } catch (e) {}
+        unobserve(rec);
+        dequeue(rec);
+        finish(rec);      /* 渲染中被删掉的卡片不能永久占着一个并发名额 */
         cards.delete(id);
       }
     });
@@ -776,8 +1297,21 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
      这些变更会喂回 MutationObserver 造成自激循环 —— 输入框看起来就是「一直闪烁」。 */
   function scan() {
     if (scanning) return;
+    /* 后台标签不扫描：切回前台时 visibilitychange 会补一次，没必要在后台反复
+       读一个正在被站点改写的 DOM（后台的定时器还会被节流，攒到切回时集中爆发）。 */
+    if (document.hidden) return;
     scanning = true;
+    var t0 = (window.performance || {}).now ? performance.now() : 0;
     try { scanBody(); } finally {
+      /* 调试探针：devtools 里读 document.documentElement.dataset.mvScan 就能看到最近几次
+         全页扫描花了多久（写在 DOM 上，页面自己的脚本也能读，方便脱离扩展上下文测）。
+         长会话变卡时先看这个数 —— 它比「感觉」可靠。 */
+      try {
+        var ms = Math.round((performance.now() - t0) * 10) / 10;
+        var prev = (document.documentElement.getAttribute('data-mv-scan') || '').split(',').filter(Boolean);
+        prev.push(String(ms));
+        document.documentElement.setAttribute('data-mv-scan', prev.slice(-20).join(','));
+      } catch (e) {}
       setTimeout(function () { scanning = false; }, 0);
     }
   }
@@ -787,7 +1321,14 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
     if (t !== theme) {
       theme = t;
       if (ui) ui.host.setAttribute('data-theme', theme);
-      cards.forEach(function (rec) { openViewer(rec); });
+      /* 只重画正在显示的图；暂存/离屏/排队中的卡片下次启动时自然用新主题。
+         走队列而不是直接重载 —— 20 张图同时换 src 会在手机上卡成一片。 */
+      cards.forEach(function (rec) {
+        if (rec.paused || rec.folded || rec.offscreen) return;
+        rec.rendered = false;
+        rec.sent = false;
+        enqueue(rec);
+      });
     }
     prune();
 
@@ -842,8 +1383,7 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
       return '<option value="' + m.id + '">' + m.label + '</option>';
     }).join('');
 
-    sr.innerHTML = '<style>' + CSS + '</style>' +
-      '<div class="mv-bar">' +
+    sr.innerHTML = '<div class="mv-bar">' +
         '<button type="button" class="mv-toggle" data-a="toggle">∑ <span>MathViz</span></button>' +
         '<span class="mv-count" data-a="count">0 张图</span>' +
       '</div>' +
@@ -861,6 +1401,7 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
           + '图直接显示在那个代码块里。Alt+M 开面板</div>' +
       '</div>' +
       '<div class="mv-toast" hidden></div>';
+    styleShadow(sr);
 
     document.body.appendChild(host);
 
@@ -944,20 +1485,40 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
     if (!d || d.__mv !== true || typeof d.type !== 'string') return;
     var rec = cards.get(d.id);
     if (!rec) return;
-    if (e.source !== rec.iframe.contentWindow) return;
+    if (!rec.iframe || e.source !== rec.iframe.contentWindow) return;
     if (d.type === 'mv:ready' || d.type === 'mv:pong') { renderInto(rec); return; }
+    if (d.type === 'mv:exported') {
+      finishExport(rec, '');
+      var r = saveImage(d.dataUrl);
+      toast(r.msg);
+      return;
+    }
+    if (d.type === 'mv:export-error') {
+      finishExport(rec, String(d.message || '导出失败'));
+      return;
+    }
     if (d.type === 'mv:done') {
+      if (rec.stuckTimer) { clearTimeout(rec.stuckTimer); rec.stuckTimer = 0; }
+      rec.rendered = true;
+      rec.paused = false;
+      rec.body.classList.remove('mv-paused');
       rec.state.textContent = '已渲染 ' + (d.figures || 1) + ' 张';
       rec.state.className = 'mv-state mv-ok';
-      rec.iframe.style.height = Math.max(80, Number(d.height) || 320) + 'px';
+      if (rec.iframe) rec.iframe.style.height = Math.max(80, Number(d.height) || 320) + 'px';
+      finish(rec);
       return;
     }
     if (d.type === 'mv:error') {
+      if (rec.stuckTimer) { clearTimeout(rec.stuckTimer); rec.stuckTimer = 0; }
+      rec.rendered = true;
+      rec.paused = false;
+      rec.body.classList.remove('mv-paused');
       rec.state.textContent = '渲染失败';
       rec.state.className = 'mv-state mv-err';
-      rec.iframe.style.height = '0px';
+      if (rec.iframe) rec.iframe.style.height = '0px';
       rec.src.removeAttribute('hidden');
       rec.src.textContent = String(d.message || '') + '\n\n---- 原始代码 ----\n' + rec.code;
+      finish(rec);
     }
   });
 
@@ -977,6 +1538,38 @@ window.MVCss = "/* MathViz 扩展：工具条与渲染卡片共用样式，全�
       });
       /* 主题切换 / SPA 换路由这类只改属性或干脆不触发 MO 的变化，靠低频兜底 */
       setInterval(function () { if (!document.hidden) scan(); }, 3000);
+
+      /* 滚动兜底：站点把消息列表放在自己的滚动容器里，容器的 scroll 不冒泡到
+         window，IIntersectionObserver 的回调也可能晚一帧。滚轮/触摸一定会冒泡，
+         用它把「视口变了」补上，滚回来就能立刻重建。 */
+      var scrollTimer = 0;
+      var onScrollish = function () {
+        if (scrollTimer) return;
+        scrollTimer = setTimeout(function () { scrollTimer = 0; scheduleEval(); }, 120);
+      };
+      ['wheel', 'touchmove', 'touchstart'].forEach(function (t) {
+        window.addEventListener(t, onScrollish, { capture: true, passive: true });
+      });
+      window.addEventListener('resize', scheduleEval);
+      window.addEventListener('visibilitychange', function () {
+        if (document.hidden) return;
+        schedule();        /* 后台期间站点可能追加了内容，先补一次扫描 */
+        scheduleEval();    /* 再按当前滚动位置决定画谁、放谁 */
+      });
+
+      /* 卡顿探针：最近 30 个长任务（>50ms）的耗时，写在 <html data-mv-long>。
+         切回标签页仍觉得卡时读这个数：空的 = 主线程没被大块同步任务占住（是站点或合成器），
+         有一串几百毫秒的 = 同步工作在这里，能直接定位是扫描、渲染还是重建。 */
+      try {
+        if (typeof PerformanceObserver === 'function') {
+          var lt = [];
+          new PerformanceObserver(function (list) {
+            list.getEntries().forEach(function (e) { lt.push(Math.round(e.duration)); });
+            if (lt.length > 30) lt = lt.slice(-30);
+            document.documentElement.setAttribute('data-mv-long', lt.join(','));
+          }).observe({ entryTypes: ['longtask'] });
+        }
+      } catch (e) {}
     };
     try {
       Platform.load(function (o) {

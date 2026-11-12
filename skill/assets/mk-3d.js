@@ -24,6 +24,8 @@
       width: "100%", role: "img", xmlns: "http://www.w3.org/2000/svg"
     });
     svg.style.display = "block";
+    /* 告诉查看器：这张图的「拖动」已经用于旋转，平移请走 Alt+拖动 / 中键 */
+    svg.setAttribute("data-mv-orbit", "1");
     var ti = mk("title", null, svg);
     ti.textContent = o.title || "立体图形";
     mk("desc", null, svg).textContent = o.desc || "";
@@ -543,6 +545,8 @@
       svg.style.cursor = "grab";
       var down = false, moved = false, lx = 0, ly = 0, downPick = null;
       svg.addEventListener("pointerdown", function (e) {
+        /* 中键和 Alt+左键留给查看器的平移，这里不接管（否则两个手势同时发生） */
+        if (e.button !== 0 || e.altKey) return;
         down = true; moved = false; lx = e.clientX; ly = e.clientY;
         downPick = (e.target && e.target.__mvPick) ? e.target.__mvPick : null;
         svg.style.cursor = "grabbing";

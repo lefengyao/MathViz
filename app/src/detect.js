@@ -66,7 +66,7 @@
     var first = text.split(/\r?\n/, 1)[0].trim().toLowerCase();
     if (/^```?\s*mathviz\b/.test(first)) return true;
     if (/^mathviz\s*$/.test(first)) return true;
-    return /\bMK\.(?:frame|space|graph|venn|matrix)\s*\(/.test(text) ||
+    return /\bMK\.(?:frame|space|graph|venn|matrix|schematic|pcb|eng)\s*\(/.test(text) ||
       /getElementById\(\s*['"]fig['"]\s*\)/.test(text);
   }
 

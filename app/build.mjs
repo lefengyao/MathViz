@@ -108,6 +108,7 @@ const parts = {
   '/* __MK_CORE__ */': read(path.join(ASSETS, 'mk-core.js')),
   '/* __MK_3D__ */': read(path.join(ASSETS, 'mk-3d.js')),
   '/* __MK_GRAPH__ */': read(path.join(ASSETS, 'mk-graph.js')),
+  '/* __MK_ENG__ */': read(path.join(ASSETS, 'mk-eng.js')),
   '/* __VIEWER_JS__ */': read(path.join(SRC, 'viewer.js'))
 };
 for (const [token, code] of Object.entries(parts)) {
@@ -139,7 +140,10 @@ for (const k of ['16', '32', '48', '128']) {
   need(manifest.action.default_icon[k]);
 }
 if (/__MK_|__VIEWER_JS__/.test(html)) problems.push('viewer.html 有未替换的占位符');
-for (const [label, sig] of [['mk-core', 'g.MK = {'], ['mk-3d', 'MK.space = space'], ['mk-graph', 'MK.graph = graph']]) {
+for (const [label, sig] of [
+  ['mk-core', 'g.MK = {'], ['mk-3d', 'MK.space = space'],
+  ['mk-graph', 'MK.graph = graph'], ['mk-eng', 'MK.schematic = schematic']
+]) {
   if (!html.includes(sig)) problems.push('运行时没内联: ' + label);
 }
 if (!html.includes('mv:render')) problems.push('viewer.js 没内联');
@@ -222,4 +226,4 @@ for (const f of ['manifest.json', 'platform-chrome.js', 'prompt.js', 'detect.js'
 }
 console.log('  icons/            4 个 PNG');
 console.log('  上传包            ' + kb(zip.buffer.length) + '（' + zip.count + ' 个文件，manifest.json 在根）');
-console.log('\n校验通过：manifest 引用完整、占位符已替换、三段运行时已内联、sandbox 页已声明。');
+console.log('\n校验通过：manifest 引用完整、占位符已替换、四段运行时已内联、sandbox 页已声明。');

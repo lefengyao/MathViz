@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const APP = path.join(ROOT, 'app', 'assets');
 const SKILL = path.join(ROOT, 'skill', 'assets');
-const FILES = ['mk-core.js', 'mk-3d.js', 'mk-graph.js'];
+const FILES = ['mk-core.js', 'mk-3d.js', 'mk-graph.js', 'mk-eng.js'];
 const mode = process.argv[2] || 'check';
 
 const sha = (p) => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex').slice(0, 12);
@@ -18,7 +18,16 @@ let drift = 0;
 for (const f of FILES) {
   const a = path.join(APP, f), s = path.join(SKILL, f);
   if (!fs.existsSync(a)) { console.error('✗ app 侧缺失 ' + f); drift = 1; continue; }
-  if (!fs.existsSync(s)) { console.error('✗ skill 侧缺失 ' + f); drift = 1; continue; }
+  if (!fs.existsSync(s)) {
+    if (mode === 'copy') {
+      fs.copyFileSync(a, s);
+      console.log('+ ' + f + '  skill 侧新建 (' + sha(a) + ')');
+      continue;
+    }
+    console.error('✗ skill 侧缺失 ' + f);
+    drift = 1;
+    continue;
+  }
   const ha = sha(a), hs = sha(s);
   if (ha === hs) { console.log('✓ ' + f + '  ' + ha); continue; }
   if (mode === 'copy') {

@@ -443,6 +443,30 @@ await t('移动版发送按钮（无文本的 div[role=button]）也能触发自
 });
 await page.evaluate(() => { document.getElementById('probe').innerHTML = ''; });
 
+console.log('\n[存图]');
+await t('点「存图」真的落下一张 PNG（不是只改了按钮文案）', async () => {
+  await setProbe('language-mathviz', [
+    'var V = MK.frame({box:[40,26,600,300], x:[-3,3], y:[-1.6,1.6], grid:true, axes:true});',
+    'document.getElementById("fig").appendChild(V.svg);',
+    'V.plot(function(x){return Math.sin(x);},{color:"blue"});',
+    'V.legend([{text:"sin x",color:"blue"}]);'
+  ].join('\n'));
+  await waitProbe('已渲染');
+
+  const dl = page.waitForEvent('download', { timeout: 25000 });
+  await page.evaluate(() => {
+    const sh = document.querySelector('#probe .mv-card-host').shadowRoot;
+    sh.querySelector('[data-a="png"]').click();
+  });
+  const d = await dl;
+  assert.ok(/\.png$/i.test(d.suggestedFilename()), '文件名 ' + d.suggestedFilename());
+  const buf = fs.readFileSync(await d.path());
+  assert.ok(buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    '不是 PNG 头');
+  assert.ok(buf.length > 5000, '只有 ' + buf.length + ' 字节，可能是空白图');
+  fs.writeFileSync(path.join(SHOTS, 'e2e-export.png'), buf);
+});
+
 await t('全程没有未捕获的 JS 错误', async () => {
   assert.deepEqual(errors, []);
 });

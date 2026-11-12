@@ -1,13 +1,14 @@
 # mathkit API 速查
 
-三个运行时文件，按需内联。`mk-3d.js` 与 `mk-graph.js` 依赖 `mk-core.js`，必须先加载。
+四个运行时文件，按需内联。`mk-3d.js` / `mk-graph.js` / `mk-eng.js` 都依赖 `mk-core.js`，必须先加载。
 
 ```html
 <script>/* mk-core.js 全文 */</script>
-<script>/* 需要时才加 mk-3d.js 或 mk-graph.js */</script>
+<script>/* 需要时才加 mk-3d.js / mk-graph.js / mk-eng.js */</script>
 ```
 
 所有坐标参数都写**数学坐标**，不是像素。运行时负责翻转 y 轴。
+例外是 `MK.schematic`（网格坐标）和 `MK.pcb`（毫米、y 向下），见各自的 reference。
 
 ---
 
@@ -245,3 +246,62 @@ document.getElementById("fig").appendChild(MK.venn({
 ```js
 regions: [{ set: 0, at: [120, 40], text: "2, 4, 6" }]   // at 是相对画布中心的像素偏移
 ```
+
+---
+
+## 工程类：`MK.schematic` / `MK.pcb` / `MK.eng`
+
+三个运行时都在 `mk-eng.js` 里，细讲见 `schematic.md`、`pcb.md`、`engineering.md`。这里只列签名。
+
+### `MK.schematic({box, cell, title, desc})` → C（网格坐标）
+
+```js
+C.resistor({id, at:[列,行], rot, label, value})   // 18 个符号同理
+C.ic({id, at, w, h, left:[], right:[], top:[], bottom:[], label})
+C.wire('R1.r', 'Q1.c', {color, w, via:[[列,行]]})
+C.wires([['R1.r','Q1.c'], ...])
+C.label([列,行], 'v_in', {dx, dy, anchor})
+C.dot([列,行], {r})
+C.report()      // {ok, floating:[...], wires}
+C.floating()    // 悬空端口数组
+```
+
+符号：`resistor cap capPolar ind diode led zener npn pnp mosfet opamp battery ac ground vcc switch fuse lamp`
+端口：两端件 `l`/`r`；`npn/pnp` `b/c/e`；`mosfet` `g/d/s`；`opamp` `n/p/out`；`ground.t`；`vcc.b`。
+
+### `MK.pcb({box, board:[宽,高], title})` → P（毫米，原点左上，y 向下）
+
+```js
+P.outline({r, text})
+P.grid({step})
+P.footprint('0805|0603|1206|1210|sot23|soic8|dip8|header', {at, ref, value, rot, n, pins, layer})
+P.trace([[x,y], ...], {w, layer:'top'|'bottom'})
+P.route(a, b, {w, layer})          // 自动 45°
+P.pad([x,y], {w, h, shape:'rect'|'circle'|'oval', drill})
+P.via([x,y], {pad, drill})
+P.silk('文字', [x,y])  /  P.silk(a, b, {dash})
+P.dim(a, b, {offset, side, text})  P.dimX  P.dimY
+P.legend([{color:'top'|'bottom'|'pad'|'silk', text}])
+```
+
+### `MK.eng({box, ext:[宽,高], scale, title})` → E（毫米，原点左下，y 向上）
+
+`ext` 只是比例提示，不是硬边界：脚本执行完运行时会按实际内容 bbox 重设 viewBox，
+写大不会缩成左下角一小块、写小也不会被裁掉。传了 `scale` 则尊重固定比例、不自动适配。
+需要手动重排时调 `E.fit()`。
+
+```js
+E.line(a, b, {style, w})        E.poly(pts, {close, style, w, fill})
+E.rect(p, w, h, opt)            E.circle(c, r, opt)
+E.arc(c, r, a1, a2, opt)        // 角度制，逆时针为正
+E.hatch(poly, {angle, gap})     E.centerMark(c, {r})
+E.dimX / E.dimY (a, b, {offset, side, text})
+E.dimDia(c, p, {dx, dy, text})  E.dimRad(c, p, {dx, dy, text})
+E.dimAngle(v, p1, p2, {r, text})
+E.leader(p, to, '文字')          E.roughness(p, 'Ra 3.2')
+E.datum(p, 'A', {down})          E.sectionCut(a, b, {label:'A'})
+E.balloon(1, p, {to})            E.viewLabel(x, y, '主视图')
+E.text(p, '文字', {dx, dy, anchor})
+```
+
+`style`：`solid` 粗实线 / `thin` 细实线 / `dash` 虚线 / `center` 中心线 / `phantom` 双点划线。

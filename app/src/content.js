@@ -152,18 +152,38 @@
   /* 沙箱卡片                                                          */
   /* ---------------------------------------------------------------- */
 
+  /* 所有卡片共用一张已解析的样式表：每张卡各插一份 <style>，200 张图就是 200 次
+     CSS 解析、约 2MB 的重复文本；adoptedStyleSheets 只解析一次，各 shadow 共用。 */
+  var cssSheet = null;
+  function sharedSheet() {
+    if (cssSheet !== null) return cssSheet;
+    cssSheet = false;
+    try {
+      var sh = new CSSStyleSheet();
+      sh.replaceSync(CSS);
+      cssSheet = sh;
+    } catch (e) { cssSheet = false; }
+    return cssSheet;
+  }
+  function styleShadow(sr) {
+    var sh = sharedSheet();
+    if (sh) { try { sr.adoptedStyleSheets = [sh]; return; } catch (e) {} }
+    sr.insertAdjacentHTML('afterbegin', '<style>' + CSS + '</style>');
+  }
+
   function cardMarkup() {
     return '<div class="mv-card" data-mv-ui="1">' +
       '<div class="mv-head">' +
         '<span class="mv-badge">MathViz</span>' +
         '<span class="mv-state" data-a="state">等待渲染…</span>' +
         '<span class="mv-gap"></span>' +
+        '<button type="button" data-a="png">存图</button>' +
         '<button type="button" data-a="source">源码</button>' +
         '<button type="button" data-a="copy">复制</button>' +
         '<button type="button" data-a="reload">重渲染</button>' +
         '<button type="button" data-a="fold">折叠</button>' +
       '</div>' +
-      '<div class="mv-body"><iframe title="MathViz 图形" sandbox="allow-scripts"></iframe></div>' +
+      '<div class="mv-body"></div>' +
       '<pre class="mv-src" hidden></pre>' +
     '</div>';
   }
@@ -172,28 +192,40 @@
     var id = 'mv' + (++seq) + '-' + digest;
     var host = el('div', 'mv-card-host');
     var inline = anchor.tagName === 'PRE';
-    host.style.cssText = inline ? 'display:block;margin:0;' : 'display:block;margin:12px 0;';
+    /* content-visibility:auto —— 屏幕外的卡片连样式/布局都跳过，长会话滚回顶部时
+       不用把几十张卡的 shadow 树重新算一遍；contain-intrinsic-size 的 auto 会记住
+       上次的真实高度，滚动条不会跳。旧内核不认这两条，忽略即可。 */
+    host.style.cssText = (inline ? 'display:block;margin:0;' : 'display:block;margin:12px 0;')
+      + 'content-visibility:auto;contain-intrinsic-size:auto 360px;';
     host.setAttribute('data-mv-ui', '1');
     host.setAttribute('data-theme', theme);
     if (inline) host.setAttribute('data-inline', '1');
     var sr = host.attachShadow({ mode: 'open' });
-    sr.innerHTML = '<style>' + CSS + '</style>' + cardMarkup();
+    sr.innerHTML = cardMarkup();
+    styleShadow(sr);
 
     var rec = {
       id: id, host: host, sr: sr, anchor: anchor, code: code, kind: kind,
       inline: inline,
       digest: digest, sent: false, sentCode: '', src: sr.querySelector('.mv-src'),
-      iframe: sr.querySelector('iframe'), state: sr.querySelector('[data-a="state"]'),
-      body: sr.querySelector('.mv-body')
+      /* iframe 是按需创建的：一个沙箱 iframe 就是一份独立 document + JS 上下文，
+         40 张图全建出来就多 40 个 frame。只有真要渲染时才插入，暂存时整块移除。 */
+      iframe: null, state: sr.querySelector('[data-a="state"]'),
+      body: sr.querySelector('.mv-body'),
+      /* 渲染生命周期：排队 → 在途 → 完成；离屏/折叠时可被「暂存」释放 iframe */
+      queued: false, inflight: false, rendered: false, paused: false, armed: false,
+      folded: false, offscreen: false, stuckTimer: 0
     };
     rec.src.textContent = code;
-    rec.iframe.addEventListener('load', function () { renderInto(rec); });
 
     sr.addEventListener('click', function (e) {
       var btn = e.target && e.target.closest ? e.target.closest('button[data-a]') : null;
       if (!btn) return;
       var a = btn.getAttribute('data-a');
-      if (a === 'source') {
+      if (a === 'png') {
+        if (rec.paused) { resume(rec); toast('图已从暂存恢复，稍等一下再点「存图」'); return; }
+        exportCard(rec, btn);
+      } else if (a === 'source') {
         var show = rec.src.hasAttribute('hidden');
         if (show) rec.src.removeAttribute('hidden'); else rec.src.setAttribute('hidden', '');
         btn.textContent = show ? '收起源码' : '源码';
@@ -210,31 +242,268 @@
           var m = mounted.get(rec.anchor);
           if (m) mounted.set(rec.anchor, { digest: rec.digest, id: m.id });
         }
+        rec.paused = false;
+        rec.rendered = false;
         rec.sent = false;
         openViewer(rec);
       } else if (a === 'fold') {
         var folded = rec.body.hasAttribute('hidden');
-        if (folded) rec.body.removeAttribute('hidden'); else rec.body.setAttribute('hidden', '');
-        btn.textContent = folded ? '折叠' : '展开';
+        if (folded) {
+          rec.body.removeAttribute('hidden');
+          rec.folded = false;
+          btn.textContent = '折叠';
+          if (rec.paused) {
+            rec.paused = false;
+            rec.body.classList.remove('mv-paused');
+            rec.body.style.height = '';
+          }
+          if (!rec.rendered) enqueue(rec);
+        } else {
+          rec.body.setAttribute('hidden', '');
+          rec.folded = true;
+          btn.textContent = '展开';
+          /* 折叠即释放：iframe 现在看不见了，没必要继续占着一个 JS 上下文 */
+          pause(rec);
+        }
       }
     });
 
     cards.set(id, rec);
-    openViewer(rec);
+    observe(rec);
+    enqueue(rec);
     return rec;
   }
 
+  /* ---------------------------------------------------------------- */
+  /* 渲染调度                                                          */
+  /*   ① 一次最多让 2 个 iframe 开工 —— 20 张图同时 new Function 会在    */
+  /*      手机上造成 300ms 级的单次卡顿；分批后峰值被摊平。              */
+  /*   ② 视口近的先画。离屏 2400px 外的卡片不画；已经画过的离开就把     */
+  /*      iframe 换成 about:blank 释放掉（一张图约 8MB），滚回来重建。    */
+  /*                                                                  */
+  /*   卡片的「远/近」一律由 distToViewport() 实测决定，IntersectionObserver */
+  /*   只当「视口可能变了」的触发器。早先直接读 isIntersecting 有两个坑： */
+  /*   消息列表在内部滚动容器里时它会被祖先裁剪切得忽真忽假，且滚动回来的  */
+  /*   那一帧不一定有回调 —— 结果就是图卡在「渲染中…」再也不出来。        */
+  /* ---------------------------------------------------------------- */
+  var MAX_INFLIGHT = 2;
+  var OFFSCREEN = 2400;   /* 超出可视范围这么多，就先不画、已画的释放掉 */
+  var queue = [];
+  var inflight = 0;
+  var pumpTimer = 0;
+  var evalTimer = 0;
+  var io = null;
+
+  function distToViewport(rec) {
+    var r = rec.host.getBoundingClientRect();
+    var vh = window.innerHeight || 800;
+    if (r.bottom <= 0) return -r.bottom;
+    if (r.top >= vh) return r.top - vh;
+    return 0;
+  }
+
+  function schedulePump() {
+    if (pumpTimer) return;
+    var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+    pumpTimer = raf(function () { pumpTimer = 0; pump(); });
+  }
+
+
+  function pump() {
+    if (!queue.length) return;
+    queue.sort(function (a, b) { return distToViewport(a) - distToViewport(b); });
+    while (inflight < MAX_INFLIGHT && queue.length) {
+      var rec = queue.shift();
+      rec.queued = false;
+      if (!rec.host.isConnected || rec.folded) continue;
+      /* 远的直接从队列丢掉（不是挂回去），由 evaluate() 在它靠近时重新入队。
+         挂回队列会让这张卡的 queued 一直为真，之后 enqueue 全被挡掉。
+         状态要一起退回「等待渲染…」，否则界面上会留一堆假的「排队中」。 */
+      if (distToViewport(rec) > OFFSCREEN) {
+        rec.state.textContent = '等待渲染…';
+        rec.state.className = 'mv-state';
+        continue;
+      }
+      openViewer(rec);
+    }
+  }
+
+  function enqueue(rec) {
+    if (!rec || rec.folded) return;
+    if (rec.queued) { schedulePump(); return; }
+    if (rec.inflight || rec.rendered || rec.paused) return;
+    if (distToViewport(rec) > OFFSCREEN) {
+      /* 等 evaluate() 把它带近；状态别停在「排队中…」——它其实没在排队 */
+      if (!rec.rendered && rec.state.textContent !== '等待渲染…') {
+        rec.state.textContent = '等待渲染…';
+        rec.state.className = 'mv-state';
+      }
+      return;
+    }
+    rec.queued = true;
+    rec.state.textContent = '排队中…';
+    rec.state.className = 'mv-state';
+    queue.push(rec);
+    schedulePump();
+  }
+
+  function dequeue(rec) {
+    var i = queue.indexOf(rec);
+    if (i >= 0) { queue.splice(i, 1); rec.queued = false; }
+  }
+
+  function finish(rec) {
+    if (!rec.inflight) return;
+    rec.inflight = false;
+    inflight = Math.max(0, inflight - 1);
+    schedulePump();
+  }
+
+  /* 释放：把 iframe 的文档清掉，高度锁住，避免下方内容跳动 */
+  function pause(rec) {
+    if (!rec || rec.paused) return;
+    dequeue(rec);
+    if (!rec.rendered && !rec.inflight) {
+      /* 还没画过：只是退回「等滚动」，别把状态留在「渲染中…」 */
+      if (rec.state.textContent !== '等待渲染…') {
+        rec.state.textContent = '等待渲染…';
+        rec.state.className = 'mv-state';
+      }
+      return;
+    }
+    var h = 0;
+    try { h = rec.body.getBoundingClientRect().height || 0; } catch (e) {}
+    finish(rec);
+    if (rec.stuckTimer) { clearTimeout(rec.stuckTimer); rec.stuckTimer = 0; }
+    rec.paused = true;
+    rec.rendered = false;
+    rec.sent = false;
+    rec.sentCode = '';
+    dropFrame(rec);
+    rec.body.classList.add('mv-paused');
+    /* 高度锁在释放前，占位图和原来一样高，下方内容不会跳 */
+    if (h > 40) rec.body.style.height = Math.round(h) + 'px';
+    rec.state.textContent = '已暂存';
+    rec.state.className = 'mv-state';
+  }
+
+  function resume(rec) {
+    rec.offscreen = false;
+    if (rec.paused) {
+      rec.paused = false;
+      rec.body.classList.remove('mv-paused');
+      rec.body.style.height = '';
+      rec.state.textContent = '排队中…';
+      rec.state.className = 'mv-state';
+    }
+    if (rec.queued) { schedulePump(); return; }
+    if (!rec.rendered && !rec.inflight) enqueue(rec);
+  }
+
+  /* 所有「视口可能变了」的场合都走这里：重算距离，该画的画、该释放的释放。
+     幂等，重复调用没有副作用。 */
+  function evaluate() {
+    cards.forEach(function (rec) {
+      if (!rec.host.isConnected) return;
+      if (rec.folded) return;      /* 折叠的已经被 pause 过了，别再动它的状态 */
+      var d = distToViewport(rec);
+      if (d <= OFFSCREEN) {
+        if (rec.offscreen || rec.paused) resume(rec);
+        else if (rec.queued) schedulePump();
+        else if (!rec.rendered && !rec.inflight) enqueue(rec);
+      } else {
+        rec.offscreen = true;
+        if (rec.rendered || rec.inflight) pause(rec);
+        else {
+          dequeue(rec);
+          if (rec.state.textContent === '排队中…') {
+            rec.state.textContent = '等待渲染…';
+            rec.state.className = 'mv-state';
+          }
+        }
+      }
+    });
+    schedulePump();
+  }
+
+  function scheduleEval() {
+    if (evalTimer) return;
+    var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+    evalTimer = raf(function () { evalTimer = 0; evaluate(); });
+  }
+
+  function observe(rec) {
+    if (typeof IntersectionObserver !== 'function') return;   /* 老内核：退化成全部渲染 */
+    if (!io) {
+      /* 只看「有没有变化」，判定交给 distToViewport —— 见文件头那段注释 */
+      io = new IntersectionObserver(function () { scheduleEval(); },
+        { rootMargin: '2400px 0px 2400px 0px' });
+    }
+    rec.host.__mvRec = rec;
+    rec.observed = true;
+    try { io.observe(rec.host); } catch (e) {}
+  }
+
+  function unobserve(rec) {
+    if (io && rec.observed) { try { io.unobserve(rec.host); } catch (e) {} }
+    rec.observed = false;
+    rec.host.__mvRec = null;
+  }
+
+  /* 按需创建沙箱 iframe。页面里同时活着的 iframe 数量直接决定内存与切回标签页
+     时的恢复成本，所以「建卡」不等于「建 frame」——只有真要画时才插进来。 */
+  function ensureFrame(rec) {
+    if (rec.iframe) return rec.iframe;
+    var f = document.createElement('iframe');
+    f.title = 'MathViz 图形';
+    f.setAttribute('sandbox', 'allow-scripts');
+    f.addEventListener('load', function () { renderInto(rec); });
+    rec.body.appendChild(f);
+    rec.iframe = f;
+    return f;
+  }
+
+  /* 移除 = 连 document 一起释放；只换 src 到 about:blank 仍会留一个 frame */
+  function dropFrame(rec) {
+    if (!rec.iframe) return;
+    try { rec.iframe.remove(); } catch (e) {}
+    rec.iframe = null;
+    rec.armed = false;
+  }
+
   function openViewer(rec) {
+    dequeue(rec);
+    if (!rec.inflight) { rec.inflight = true; inflight++; }
+    rec.paused = false;
+    rec.body.classList.remove('mv-paused');
+    rec.body.style.height = '';
     rec.host.setAttribute('data-theme', theme);
-    rec.state.textContent = '等待渲染…';
+    rec.state.textContent = '渲染中…';
     rec.state.className = 'mv-state';
     rec.sent = false;
     rec.sentCode = '';
+    /* 沙箱页没回话时别把并发名额永久占住，否则后面的图全卡在队列里 */
+    if (rec.stuckTimer) clearTimeout(rec.stuckTimer);
+    rec.stuckTimer = setTimeout(function () {
+      if (rec.inflight) { rec.state.textContent = '渲染超时'; finish(rec); }
+    }, 9000);
     var url = Platform.viewerUrl('theme=' + theme + '&id=' + encodeURIComponent(rec.id));
-    rec.iframe.setAttribute('src', url);
+    if (!url) {
+      /* 扩展被重载/更新后旧标签页的上下文已失效（运行时通道没了）。
+         finish() 会把 inflight 名额还回去，否则后面所有图都永远排队。 */
+      rec.state.textContent = '扩展已更新，请刷新页面（F5）';
+      rec.state.className = 'mv-state mv-err';
+      finish(rec);
+      return;
+    }
+    var f = ensureFrame(rec);
+    rec.armed = true;      /* 只有这一次 setAttribute 之后的 load 才是真的沙箱页 */
+    f.setAttribute('src', url);
   }
 
   function renderInto(rec) {
+    if (!rec.armed) return;      /* iframe 刚插进 DOM 时加载 about:blank 也会触发 load */
+    if (rec.paused || rec.folded) return;
     if (rec.sent && rec.sentCode === rec.code) return;
     rec.sent = true;
     rec.sentCode = rec.code;
@@ -246,6 +515,60 @@
     } catch (e) {
       rec.state.textContent = '沙箱通信失败';
     }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* 存图：图在沙箱 iframe 里，父页面拿不到它的 DOM，只能让它自己转 PNG  */
+  /* ---------------------------------------------------------------- */
+
+  function stamp() {
+    var d = new Date();
+    var p = function (v) { return (v < 10 ? '0' : '') + v; };
+    return String(d.getFullYear()) + p(d.getMonth() + 1) + p(d.getDate())
+      + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+
+  function exportCard(rec, btn) {
+    if (rec.busy) return;
+    if (!rec.iframe || !rec.rendered) {
+      /* 还没画（离屏卡片可能从来没启动过），先让它画出来。
+         不能直接 enqueue()：enqueue 开头会把 rec.paused 的卡静默挡掉，
+         表现为「点了存图永远没反应」——必须先 resume 恢复这张卡。 */
+      toast('这张图还没渲染，正在开始画，稍等一下再点「存图」');
+      resume(rec);
+      return;
+    }
+    rec.busy = true;
+    rec.pngBtn = btn;
+    rec.pngLabel = btn.textContent;
+    btn.textContent = '生成中…';
+    try {
+      rec.iframe.contentWindow.postMessage({
+        __mv: true, type: 'mv:export', id: rec.id, scale: 2
+      }, '*');
+    } catch (e) {
+      finishExport(rec, '沙箱通信失败，先点一下「重渲染」');
+      return;
+    }
+    clearTimeout(rec.pngTimer);
+    rec.pngTimer = setTimeout(function () {
+      finishExport(rec, '导出超时了，先点「重渲染」再存');
+    }, 8000);
+  }
+
+  function finishExport(rec, msg) {
+    rec.busy = false;
+    clearTimeout(rec.pngTimer);
+    if (rec.pngBtn) rec.pngBtn.textContent = rec.pngLabel || '存图';
+    if (msg) toast(msg);
+  }
+
+  function saveImage(dataUrl) {
+    var name = 'mathviz-' + stamp() + '.png';
+    if (Platform && typeof Platform.saveImage === 'function') {
+      return Platform.saveImage(dataUrl, name) || { ok: false, msg: '存图失败' };
+    }
+    return { ok: false, msg: '当前平台不支持存图' };
   }
 
   function copyText(text, btn) {
@@ -402,6 +725,9 @@
     cards.forEach(function (rec, id) {
       if (!rec.host.isConnected || !rec.anchor || !rec.anchor.isConnected) {
         try { rec.host.remove(); } catch (e) {}
+        unobserve(rec);
+        dequeue(rec);
+        finish(rec);      /* 渲染中被删掉的卡片不能永久占着一个并发名额 */
         cards.delete(id);
       }
     });
@@ -411,8 +737,21 @@
      这些变更会喂回 MutationObserver 造成自激循环 —— 输入框看起来就是「一直闪烁」。 */
   function scan() {
     if (scanning) return;
+    /* 后台标签不扫描：切回前台时 visibilitychange 会补一次，没必要在后台反复
+       读一个正在被站点改写的 DOM（后台的定时器还会被节流，攒到切回时集中爆发）。 */
+    if (document.hidden) return;
     scanning = true;
+    var t0 = (window.performance || {}).now ? performance.now() : 0;
     try { scanBody(); } finally {
+      /* 调试探针：devtools 里读 document.documentElement.dataset.mvScan 就能看到最近几次
+         全页扫描花了多久（写在 DOM 上，页面自己的脚本也能读，方便脱离扩展上下文测）。
+         长会话变卡时先看这个数 —— 它比「感觉」可靠。 */
+      try {
+        var ms = Math.round((performance.now() - t0) * 10) / 10;
+        var prev = (document.documentElement.getAttribute('data-mv-scan') || '').split(',').filter(Boolean);
+        prev.push(String(ms));
+        document.documentElement.setAttribute('data-mv-scan', prev.slice(-20).join(','));
+      } catch (e) {}
       setTimeout(function () { scanning = false; }, 0);
     }
   }
@@ -422,7 +761,14 @@
     if (t !== theme) {
       theme = t;
       if (ui) ui.host.setAttribute('data-theme', theme);
-      cards.forEach(function (rec) { openViewer(rec); });
+      /* 只重画正在显示的图；暂存/离屏/排队中的卡片下次启动时自然用新主题。
+         走队列而不是直接重载 —— 20 张图同时换 src 会在手机上卡成一片。 */
+      cards.forEach(function (rec) {
+        if (rec.paused || rec.folded || rec.offscreen) return;
+        rec.rendered = false;
+        rec.sent = false;
+        enqueue(rec);
+      });
     }
     prune();
 
@@ -477,8 +823,7 @@
       return '<option value="' + m.id + '">' + m.label + '</option>';
     }).join('');
 
-    sr.innerHTML = '<style>' + CSS + '</style>' +
-      '<div class="mv-bar">' +
+    sr.innerHTML = '<div class="mv-bar">' +
         '<button type="button" class="mv-toggle" data-a="toggle">∑ <span>MathViz</span></button>' +
         '<span class="mv-count" data-a="count">0 张图</span>' +
       '</div>' +
@@ -496,6 +841,7 @@
           + '图直接显示在那个代码块里。Alt+M 开面板</div>' +
       '</div>' +
       '<div class="mv-toast" hidden></div>';
+    styleShadow(sr);
 
     document.body.appendChild(host);
 
@@ -579,20 +925,40 @@
     if (!d || d.__mv !== true || typeof d.type !== 'string') return;
     var rec = cards.get(d.id);
     if (!rec) return;
-    if (e.source !== rec.iframe.contentWindow) return;
+    if (!rec.iframe || e.source !== rec.iframe.contentWindow) return;
     if (d.type === 'mv:ready' || d.type === 'mv:pong') { renderInto(rec); return; }
+    if (d.type === 'mv:exported') {
+      finishExport(rec, '');
+      var r = saveImage(d.dataUrl);
+      toast(r.msg);
+      return;
+    }
+    if (d.type === 'mv:export-error') {
+      finishExport(rec, String(d.message || '导出失败'));
+      return;
+    }
     if (d.type === 'mv:done') {
+      if (rec.stuckTimer) { clearTimeout(rec.stuckTimer); rec.stuckTimer = 0; }
+      rec.rendered = true;
+      rec.paused = false;
+      rec.body.classList.remove('mv-paused');
       rec.state.textContent = '已渲染 ' + (d.figures || 1) + ' 张';
       rec.state.className = 'mv-state mv-ok';
-      rec.iframe.style.height = Math.max(80, Number(d.height) || 320) + 'px';
+      if (rec.iframe) rec.iframe.style.height = Math.max(80, Number(d.height) || 320) + 'px';
+      finish(rec);
       return;
     }
     if (d.type === 'mv:error') {
+      if (rec.stuckTimer) { clearTimeout(rec.stuckTimer); rec.stuckTimer = 0; }
+      rec.rendered = true;
+      rec.paused = false;
+      rec.body.classList.remove('mv-paused');
       rec.state.textContent = '渲染失败';
       rec.state.className = 'mv-state mv-err';
-      rec.iframe.style.height = '0px';
+      if (rec.iframe) rec.iframe.style.height = '0px';
       rec.src.removeAttribute('hidden');
       rec.src.textContent = String(d.message || '') + '\n\n---- 原始代码 ----\n' + rec.code;
+      finish(rec);
     }
   });
 
@@ -612,6 +978,72 @@
       });
       /* 主题切换 / SPA 换路由这类只改属性或干脆不触发 MO 的变化，靠低频兜底 */
       setInterval(function () { if (!document.hidden) scan(); }, 3000);
+
+      /* 滚动兜底：站点把消息列表放在自己的滚动容器里，容器的 scroll 不冒泡到
+         window，IIntersectionObserver 的回调也可能晚一帧。滚轮/触摸一定会冒泡，
+         用它把「视口变了」补上，滚回来就能立刻重建。 */
+      var scrollTimer = 0;
+      var onScrollish = function () {
+        if (scrollTimer) return;
+        scrollTimer = setTimeout(function () { scrollTimer = 0; scheduleEval(); }, 120);
+      };
+      ['wheel', 'touchmove', 'touchstart'].forEach(function (t) {
+        window.addEventListener(t, onScrollish, { capture: true, passive: true });
+      });
+      window.addEventListener('resize', scheduleEval);
+      window.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          /* 诊断埋点：记下进后台的时刻，切回时能算出后台了多久 */
+          try { document.documentElement.dataset.mvHiddenAt = String(Date.now()); } catch (e) {}
+          return;
+        }
+        /* 诊断埋点（只记录，不改下面的调度）：切回前台时快照卡片状态，
+           600ms 后补记一次。两个用途：
+           ① t+ 耗时包含主线程被占住的时间 —— 切回瞬间整页卡死的话，
+              这个数会直接涨到几百毫秒甚至几秒，一眼定位卡死发生在唤醒后多凶；
+           ② 对比前后两次快照，能看出是我们重建（f/r 变化）还是站点自己在闹。
+           devtools 里读 document.documentElement.getAttribute('data-mv-wake')。 */
+        try {
+          var hidAt = +(document.documentElement.dataset.mvHiddenAt || 0);
+          var away = hidAt ? Math.round((Date.now() - hidAt) / 1000) : -1;
+          var wakeT0 = (window.performance || {}).now ? performance.now() : 0;
+          var snap = function () {
+            var s = { n: 0, r: 0, p: 0, q: 0, i: 0, f: 0 };
+            cards.forEach(function (rec) {
+              s.n++;
+              if (rec.rendered) s.r++;
+              if (rec.paused) s.p++;
+              if (rec.queued) s.q++;
+              if (rec.inflight) s.i++;
+              if (rec.iframe) s.f++;
+            });
+            return 'n' + s.n + '/r' + s.r + '/p' + s.p + '/q' + s.q + '/i' + s.i + '/f' + s.f;
+          };
+          setTimeout(function () {
+            var spent = wakeT0 ? (Math.round((performance.now() - wakeT0) * 10) / 10 + 'ms') : '?';
+            var line = 'away=' + away + 's ' + snap() + ' t+' + spent;
+            var prev = (document.documentElement.getAttribute('data-mv-wake') || '').split(',').filter(Boolean);
+            prev.push(line);
+            document.documentElement.setAttribute('data-mv-wake', prev.slice(-5).join(','));
+          }, 600);
+        } catch (e) {}
+        schedule();        /* 后台期间站点可能追加了内容，先补一次扫描 */
+        scheduleEval();    /* 再按当前滚动位置决定画谁、放谁 */
+      });
+
+      /* 卡顿探针：最近 30 个长任务（>50ms）的耗时，写在 <html data-mv-long>。
+         切回标签页仍觉得卡时读这个数：空的 = 主线程没被大块同步任务占住（是站点或合成器），
+         有一串几百毫秒的 = 同步工作在这里，能直接定位是扫描、渲染还是重建。 */
+      try {
+        if (typeof PerformanceObserver === 'function') {
+          var lt = [];
+          new PerformanceObserver(function (list) {
+            list.getEntries().forEach(function (e) { lt.push(Math.round(e.duration)); });
+            if (lt.length > 30) lt = lt.slice(-30);
+            document.documentElement.setAttribute('data-mv-long', lt.join(','));
+          }).observe({ entryTypes: ['longtask'] });
+        }
+      } catch (e) {}
     };
     try {
       Platform.load(function (o) {

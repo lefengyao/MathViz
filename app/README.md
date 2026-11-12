@@ -48,10 +48,13 @@
 
 | 模式 | 效果 |
 |---|---|
-| 通用 · 自动选产线 | 模型自己判断手写 SVG / 2D / 3D / 图论 |
+| 通用 · 自动选产线 | 模型自己判断手写 SVG / 2D / 3D / 图论 / 电路 / PCB / 工程图 |
 | 函数与 2D | 强制 `MK.frame`，曲线、参数方程、向量 |
 | 立体与 3D | 强制 `MK.space`，多面体、截面、空间向量 |
 | 图论与离散 | 强制 `MK.graph` / `MK.venn` / `MK.matrix` |
+| 电路原理图 | 强制 `MK.schematic`，元件符号 + 端口名连线，自动正交走线 |
+| PCB 布局 | 强制 `MK.pcb`，板框 + 封装 + 走线 + 过孔，毫米坐标 |
+| 机械工程图 | 强制 `MK.eng`，零件轮廓 + 尺寸 + 剖面线 + 粗糙度 |
 | 纯 SVG · 简单图 | 零运行时，只适合图元 ≤ 8 的简单示意图 |
 | 关闭 | 不插协议；已有代码块仍会渲染 |
 
@@ -62,8 +65,28 @@
 ## 图在哪里
 
 渲染宿主**直接挂在模型输出的那个 `<pre>` 代码块内部**：原代码文本收起（点「源码」能看回来），
-代码块原地变成图，右上角只留一行小按钮（源码 / 复制 / 重渲染 / 折叠）。
+代码块原地变成图，右上角只留一行小按钮（存图 / 源码 / 复制 / 重渲染 / 折叠）。
 不会在消息旁边另起一张卡片，也不会凭空多出图片。
+
+## 存图（导出 PNG）
+
+每张图右上角的「存图」把当前画面存成 PNG，**3D 图存的就是此刻这个视角** ——
+拖拽时运行时已经把视角画进了 DOM，序列化下来的就是屏幕上看到的样子，不需要另存相机参数。
+
+几个不那么显然的决定：
+
+| 决定 | 为什么 |
+|---|---|
+| 在沙箱 iframe 里转 PNG，只回传 data URL | iframe 是 `sandbox="allow-scripts"`（opaque origin），父页面拿不到它的 DOM |
+| 用 `data:image/svg+xml` 喂 `<img>` 再画 canvas | blob URL 在 opaque origin 下有可能被判定跨源弄脏 canvas；data URL 不涉及源，实测 `toDataURL` 不抛错 |
+| 导出前把 `var(--font-sans,…)` 换成 fallback | SVG 作为图片渲染时读不到页面 CSS 变量，不换字体就整段失效 |
+| 按 `getBBox()` 紧裁，不导整帧 | 运行时给标题预留了空白，3D 图整帧导出会像截图；裁完才像插图 |
+| 底色用当前主题背景 | 透明 PNG 贴到深色聊天里会糊成一片 |
+| 2 倍图，超过 1600 万像素自动降倍 | 手机上开太大的 canvas 会直接 OOM |
+| 一张卡里有多张图时竖着拼成一张 | 模型偶尔一次画两条，分开存反而麻烦 |
+
+浏览器里走 `<a download>`；Android 的 WebView 没有 `DownloadListener`，`<a download>` 什么都不会发生，
+所以那边交给原生 `MathVizBridge.saveImage()` 写进 `Pictures/MathViz`（见 `android/README.md`）。
 
 ## 3D 与图论的交互（2026-11-11 新增）
 
@@ -78,6 +101,103 @@
 - 提示词（skill）已同步：solid3d / discrete 产线明确告诉模型这些交互自带、鼓励给块加 `info`。
 - 交互测试 `test/interact.test.mjs` 15 项 + 真机 CDP 实测
   （`android/interact-check.mjs`：旋转视图变化、重放图元数稳定、点面高亮 / 信息栏 / 回调）。
+
+## 画布缩放与平移（2026-11-12 新增）
+
+图太小看不清细节时，可以直接在卡片里放大看。
+
+| 手势 | 普通图（2D / 图论 / 电路 / PCB / 工程图） | 3D 图 |
+|---|---|---|
+| 鼠标滚轮 | 以指针为锚缩放 1×–6× | 同左 |
+| 鼠标左键拖动 | 平移 | **旋转**（原有行为不变） |
+| Alt+左键 / 中键拖动 | 平移 | 平移（左键被旋转占用） |
+| 双指张开 / 捏合 | 缩放 + 跟随双指中点平移 | 同左 |
+| 单指拖动 | 交还给页面滚动 | 旋转 |
+| 双击 | 复位 | 复位缩放 + 复位视角 |
+
+右上角会出现一个半透明的百分比胶囊，点它也能一键复位；回到 100% 后自动消失。
+
+几个关键决定：
+
+- **只改 CSS `transform`，不动 `viewBox`**。坐标映射不变，3D 的拾取与旋转、
+  点面高亮都不受影响；导出的 PNG 也因此永远是整张图，而不是「放大后看到的那一块」——
+  缩放是看的手段，不该改变图是什么。
+- **1× 时滚轮向下滚会放行**（不 `preventDefault`），浏览器把滚动交给聊天页，
+  不会出现「图把页面卡住，只能把鼠标挪到图外面才能滚」。
+- **单指不拦截**（`touch-action: pan-y` + 只有双指才 `preventDefault`），
+  手机上手指落在图上照样能上下滑聊天；双指才接管，顺带避免浏览器自己缩放整页。
+- **平移有边界**：图放大后最多拖到边缘对齐，不会拖出一片空白。
+- 3D 的 svg 带 `data-mv-orbit="1"` 标记，查看器据此把「拖动」让给旋转；
+  `S.drag()` 之类的旧写法仍然兼容。
+
+验证：`test/nav.test.mjs` 24 项，全部走真实事件（Playwright 鼠标 / CDP 触摸 / 合成 TouchEvent），
+覆盖锚点不漂移、平移边界、双指位移不放大、3D 手势分工、放大后导出仍是整图；
+MuMu（Android 12 / WebView）上实测双指捏合 2.07×、平移跟手、双击复位。
+
+### 图多了会不会卡（v1.6）
+
+先量再改。`test/perf.mjs` 直接内嵌 `viewer.html` 压测，测的是「图本身」的成本：
+
+| 图数 | SVG 节点 | 渲染总耗时 | 整页光栅 | 滚动 CPU/帧 | 增量内存 |
+|---|---|---|---|---|---|
+| 1 | 66 | 76ms | 12ms | 0.08ms | — |
+| 10 | 362 | 90ms | 15ms | 1.22ms | ~110MB |
+| 20 | 660 | 121ms | 18ms | 1.28ms | ~150MB |
+
+（手机视口 393×852 + CPU 降速 5 倍：20 张 349ms、CPU 3.39ms/帧 —— 仍在一帧 16.7ms 的预算内。）
+
+绘图侧轻是因为：一条 300 点的曲线在 DOM 里就一个 `<path>`；3D 没有常驻 `rAF`，只在拖动时重绘；
+缩放只改 CSS `transform`，不触发重排。**成本在 iframe 数量上**——每张图一个沙箱 iframe，
+各自一份 document + JS 上下文，约 8MB/张。所以优化全在「少开、早关」：
+
+- **分批渲染**：最多 2 个 iframe 同时开工，队列按到视口的距离排序。20 张图同时
+  `new Function` 在手机上是一次 300ms 级的卡顿，分批后峰值被摊平。
+- **iframe 按需创建**：建卡不等于建 frame。40 张图全建出来就是 40 个 frame，
+  每个都是一份 document；现在只有真要画时才插入，暂存时**整个移除**（不是换成
+  `about:blank`——那样仍然留着一个 frame）。实测 120 张卡同时只有 5 个 iframe。
+- **离屏暂存**：离可视范围 2400px 以外的图先不画；画过的离开就移除 iframe，
+  高度用占位锁住（不跳版），滚回来重建一次 6~17ms。
+- **共用一张样式表**：卡片的 CSS 用 `adoptedStyleSheets` 共享，只解析一次；
+  以前每张卡都插一份 `<style>`，200 张图就是 200 次解析、约 2MB 重复文本。
+- **屏幕外不排版**：卡片宿主加 `content-visibility:auto`，屏幕外的 shadow 树连
+  样式与布局都跳过，长会话滚回顶部不用把几十张卡重算一遍。
+- **后台不扫描**：`document.hidden` 期间不扫 DOM，切回前台由 `visibilitychange`
+  补一次扫描 + 一次重算，避免后台攒下的回调在切回时集中爆发。
+- **折叠即释放**：点「折叠」不再只是 `display:none`，iframe 一并清掉。
+- **主题切换走队列**：以前是 20 张图同时换 `src`，现在排队重画。
+
+「远/近」**只信 `getBoundingClientRect()` 量出来的距离**，`IntersectionObserver` 仅用来
+「通知视口可能变了」。v1.6 曾经直接读 `isIntersecting` 决定画还是释放，结果在
+「消息列表装在自己的滚动容器里」的站点（DeepSeek 就是）上会翻车：祖先裁剪让判定忽真忽假，
+滚回来的那一帧又不一定有回调，卡片就永久停在「渲染中…」。现在任何一次 IO 回调、
+滚轮 / 触摸 / 缩放 / 切回标签页都会触发一次 `evaluate()` 重算，可见的一定画、远的一定释放。
+
+切回标签页仍觉得卡时，先读三个探针（DevTools 控制台）：
+
+```js
+document.documentElement.dataset.mvScan            // 最近 20 次全页扫描的耗时（ms）
+document.documentElement.dataset.mvLong            // 最近 30 个长任务（>50ms）的耗时
+document.documentElement.getAttribute('data-mv-wake')  // 最近 5 次切回前台：后台多久 + 卡片快照 + 唤醒耗时
+```
+
+`mvLong` 为空 = 主线程没有大块同步任务，卡在站点自身或合成器；有一串几百毫秒的，
+说明同步工作确实在这里，把数字发回来就能定位是扫描、渲染还是重建。
+
+`mvWake` 每条格式：`away=Ns n总数/r已渲染/p暂存/q排队/i进行中/f活frame t+耗时`。
+`t+` 是切回前台到记录点（600ms 后）的墙上耗时——**它包含主线程被占住的时间**：
+整页卡死时这个数会直接涨到几百毫秒甚至几秒，一眼看出卡死发生在唤醒后、有多凶；
+对比前后的 `n/r/p/q/i/f` 快照，能看出是我们重建 frame（f 变化）还是站点自己在闹。
+
+另外扩展被重载/更新后，未刷新的旧标签页会优雅降级：卡片状态显示「扩展已更新，请刷新页面（F5）」，
+不再抛 `chrome.runtime` 相关异常（`platform-chrome.js` 里的 `alive()` 探活负责这个）。
+
+想复现或看自己的机器：`node test/perf.mjs --mobile`；机制本身由 `test/lazy.test.mjs` 10 项守着
+（首屏不提前画远处图 / 滚动到底能画 / 滚回重建 / 离屏换 `about:blank` 且高度不塌 / 折叠释放 /
+内部滚动容器 + 自动滚到底仍能画 / 无 JS 错误）。
+工程图自适应的边界（320px 窄容器 / 超长标题 / 空图 / 单点 / PCB）由 `test/eng-boundary.test.mjs` 守着。
+
+排查现场卡顿时，控制台执行 `document.documentElement.dataset.mvScan` 可看到最近 20 次全页扫描耗时
+（3ms 内正常；到几十毫秒说明是扫描而非绘图的问题）。
 
 早期版本会「输入框一直闪烁 + 莫名其妙多出图」，根因是三个叠在一起的问题，现在都已修掉：
 
@@ -122,7 +242,7 @@ V.dot([0,-2], {color:'coral'});
 
 ```
 content script（隔离世界，页面 DOM 可见）
-  ├─ prompt.js   六种模式的提示词模板
+  ├─ prompt.js   九种模式的提示词模板
   ├─ detect.js   ```mathviz 块识别 / 归一化 / 分类 / 摘要去重
   ├─ 工具条      Shadow DOM，左下角（避开 browser/ 那套的右下悬浮球）
   ├─ 插入        原生 value setter + input 事件；本轮只写一次，换模式才允许更新
@@ -131,7 +251,7 @@ content script（隔离世界，页面 DOM 可见）
                        │ postMessage（只传代码字符串，不传任何凭据）
                        ▼
 viewer.html（manifest.sandbox.pages，opaque origin）
-  ├─ 内联 mk-core.js + mk-3d.js + mk-graph.js（约 1600 行，本地打包）
+  ├─ 内联 mk-core.js + mk-3d.js + mk-graph.js + mk-eng.js（约 2900 行，本地打包）
   ├─ new Function(code)() 执行模型代码 → 生成 <svg>
   └─ 回传高度 / 错误 → 父页面撑开 iframe
 ```
@@ -173,17 +293,24 @@ mathviz/
 │   ├── detect.js          代码块识别（纯逻辑，可单测）
 │   ├── content.js         工具条 / 插入 / 观察器 / 卡片（只认 MVPlatform）
 │   ├── viewer.html        沙箱页模板（占位符由构建替换）
-│   ├── viewer.js          沙箱内执行与回传
+│   ├── viewer.js          沙箱内执行、回传、画布手势（缩放/平移/导出）
 │   └── ui.css             工具条 + 卡片样式（注入 Shadow DOM）
-├── assets/                MathViz 三个运行时的**本地快照**
-│   └── mk-core.js / mk-3d.js / mk-graph.js
+├── assets/                MathViz 四个运行时的**本地快照**
+│   └── mk-core.js / mk-3d.js / mk-graph.js / mk-eng.js
 ├── android/               【Android 正式 App】WebView 套壳 + platform 适配层
 ├── android-probe/         真机 DOM 探针（最小 WebView + CDP）
 ├── test/
-│   ├── core.test.mjs      61 项纯逻辑
-│   ├── e2e.mjs            34 项真实 Chromium 端到端
+│   ├── core.test.mjs      67 项纯逻辑
+│   ├── e2e.mjs            35 项真实 Chromium 端到端（含存图真下载）
 │   ├── interact.test.mjs  15 项交互（旋转/点选/信息栏，真实 Chromium）
-│   ├── testset.mjs        能力测试集数据源（19 条）
+│   ├── eng.test.mjs       44 项工程运行时渲染断言（真实 Chromium）
+│   ├── export.test.mjs     9 项导出 PNG 断言（沙箱 iframe + canvas 不污染）
+│   ├── nav.test.mjs       24 项画布手势（滚轮/拖动/双指/复位/导出不受影响）
+│   ├── lazy.test.mjs      10 项渲染调度（分批/离屏暂存/滚回重建/折叠释放/内部滚动容器）
+│   ├── perf.mjs           渲染压力基准（N 张图的耗时/内存/CPU，--mobile 模拟手机）
+│   ├── docsnip.mjs        把 skill/references 的代码块全跑一遍
+│   ├── shot.mjs           按 id 渲染用例并截图，供人眼校对排版
+│   ├── testset.mjs        能力测试集数据源（25 条）
 │   ├── verify-testset.mjs 测试集逐条验证
 │   ├── compliance.mjs     模型回复合规检查（产线/自造交互/截断，可 --render）
 │   ├── gen-testset-md.mjs 生成 testset.md
@@ -203,10 +330,13 @@ mathviz/
 ```bash
 cd app
 node build.mjs              # 产出 dist/extension/ + dist/extension.zip
-node test/core.test.mjs     # 61 项：提示词、代码块提取/归一化/分类、协议不自造闭合 fence
-node test/e2e.mjs           # 34 项：真实 Chromium 加载 unpacked 扩展
+node test/core.test.mjs     # 67 项：提示词、代码块提取/归一化/分类、协议不自造闭合 fence
+node test/export.test.mjs   # 9 项：导出 PNG（尺寸/底色/3D 当前视角/多图拼合）
+node test/e2e.mjs           # 35 项：真实 Chromium 加载 unpacked 扩展（含点存图真下载）
+node test/lazy.test.mjs     # 10 项：渲染调度（分批 / 按需 iframe / 离屏移除 / 滚回重建 / 折叠释放 / 内部滚动容器）
+node test/perf.mjs --mobile # 压力基准：手机视口 + CPU×5 降速下 N 张图的耗时与内存
 node test/interact.test.mjs # 15 项：拖拽旋转、点面高亮、信息栏、图论节点点选
-node test/compliance.mjs --selftest   # 规则自检：19 条正例零误判 / 7 条反例零漏检
+node test/compliance.mjs --selftest   # 规则自检：25 条正例零误判 / 12 条反例零漏检
 ```
 
 e2e 用本地 mock 的 `chat.deepseek.com` 页面（Playwright `route` 拦截，不联网、不需要登录），
@@ -232,14 +362,21 @@ e2e 用本地 mock 的 `chat.deepseek.com` 页面（Playwright `route` 拦截，
 
 ### 能力测试集（给人手测真机/真页面用）
 
-`testset.md` 是 19 条自包含用例（2D 五种 / 3D 五种（含交互）/ 图论五种 / 纯 SVG / 综合边界），
-每条都是完整的 ` ```mathviz ` 代码块，**原样粘进输入框发送即可渲染**（用户消息同样被扫描），
+`testset.md` 是 25 条自包含用例（2D 五种 / 3D 五种（含交互）/ 图论五种 / 纯 SVG / 综合边界 /
+电路与工程六种），每条都是完整的 ` ```mathviz ` 代码块，**原样粘进输入框发送即可渲染**（用户消息同样被扫描），
 用来在不依赖模型的情况下逐项验证渲染链路；表格里还附了「直接问模型的问题」测提示词遵循度。
 
 ```bash
-node test/verify-testset.mjs   # 真实 Chromium 里逐条跑（当前 19/19）
+node test/verify-testset.mjs   # 真实 Chromium 里逐条跑（当前 25/25）
 node test/gen-testset-md.mjs   # 改过 test/testset.mjs 后重新生成 testset.md
 ```
+
+**提问测试集**：`questions.md` 是另一份文件，只有问题、没有代码和判读说明——
+105 条按九条产线分组（自动选产线 / 2D / 3D / 图论 / 原理图 / PCB / 工程图 / 综合边界），
+配合顶部「插入作图提示词」逐条发给模型，看它是否按协议出代码块。
+用法：选中一条 → 粘到「我的问题」后面 → 发送；出图即通过。
+第 95–97 条是故意让它自己写动画 / 拖拽的陷阱题，第 94 条是「用 canvas 画」的跑偏题，
+第 98–99 条测多轮上下文改写，第 100 条测「一图混排」是否会被拆成两个代码块。
 
 **测模型遵循度**：把模型对表中问题的原始回复存成 txt，交给检查器打分——
 

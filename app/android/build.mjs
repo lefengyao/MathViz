@@ -40,7 +40,7 @@ if (/chrome\./.test(inject)) problems.push('inject.js 里还有 chrome.* 调用�
 for (const sig of ['MVPlatform', 'MVPrompt', 'MVDetect', 'MVCss', '__mvLoaded']) {
   if (!inject.includes(sig)) problems.push('inject.js 缺少 ' + sig);
 }
-for (const sig of ['g.MK = {', 'MK.space = space', 'MK.graph = graph', 'mv:render']) {
+for (const sig of ['g.MK = {', 'MK.space = space', 'MK.graph = graph', 'MK.schematic = schematic', 'mv:render']) {
   if (!viewer.includes(sig)) problems.push('viewer.html 缺少 ' + sig);
 }
 if (problems.length) {
@@ -51,4 +51,4 @@ if (problems.length) {
 console.log('\nAndroid assets 组装完成');
 console.log('  inject.js   ' + kb(Buffer.byteLength(inject)));
 console.log('  viewer.html ' + kb(Buffer.byteLength(viewer)));
-console.log('\n校验通过：平台层齐全、无 chrome.* 残留、三段运行时已内联。');
+console.log('\n校验通过：平台层齐全、无 chrome.* 残留、四段运行时已内联。');

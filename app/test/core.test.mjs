@@ -19,17 +19,19 @@ function t(name, fn) {
 }
 
 group('提示词：模式与结构');
-t('6 个模式，id 齐全', () => {
-  assert.deepEqual(P.MODES.map((m) => m.id), ['off', 'auto', 'plot2d', 'solid3d', 'discrete', 'svg']);
+t('9 个模式，id 齐全', () => {
+  assert.deepEqual(P.MODES.map((m) => m.id),
+    ['off', 'auto', 'plot2d', 'solid3d', 'discrete', 'schematic', 'pcb', 'eng', 'svg']);
 });
 t('off 返回空串', () => assert.equal(P.buildPrompt('off'), ''));
 t('未知模式返回空串', () => assert.equal(P.buildPrompt('nope'), ''));
 t('auto 含协议标记', () => assert.ok(P.buildPrompt('auto').includes(P.MARK)));
 t('含「我的问题」分隔标记', () => assert.ok(P.buildPrompt('auto').includes(P.QUESTION)));
 t('规定唯一输出格式 mathviz 代码块', () => assert.ok(/```mathviz/.test(P.buildPrompt('auto'))));
-t('三类运行时 API 都写进协议', () => {
+t('所有运行时 API 都写进协议', () => {
   const s = P.buildPrompt('auto');
-  for (const k of ['MK.frame', 'MK.space', 'MK.graph', 'MK.venn']) assert.ok(s.includes(k), k);
+  for (const k of ['MK.frame', 'MK.space', 'MK.graph', 'MK.venn',
+    'MK.schematic', 'MK.pcb', 'MK.eng']) assert.ok(s.includes(k), k);
 });
 t('说明把图挂到 #fig', () => assert.ok(P.buildPrompt('auto').includes("getElementById('fig')")));
 t('明确禁止内联运行时 / script 标签', () => {
@@ -38,15 +40,21 @@ t('明确禁止内联运行时 / script 标签', () => {
   assert.ok(s.includes('`<script>` 标签'));
 });
 t('明确禁止访问网络与存储', () => assert.ok(P.buildPrompt('auto').includes('localStorage')));
-t('5 种产线的提示词互不相同', () => {
-  const ids = ['auto', 'plot2d', 'solid3d', 'discrete', 'svg'];
+t('说明代码块本身就是脚本，不要对外声称「不支持脚本」', () => {
+  const s = P.buildPrompt('auto');
+  assert.ok(s.includes('同步执行一次'), '没交代脚本只执行一次');
+  assert.ok(s.includes('requestAnimationFrame'), '没说明不要做持续动画');
+  assert.ok(s.includes('不要说成'), '没禁止「环境不支持脚本」这种错误说法');
+});
+t('8 种产线的提示词互不相同', () => {
+  const ids = ['auto', 'plot2d', 'solid3d', 'discrete', 'schematic', 'pcb', 'eng', 'svg'];
   const set = new Set(ids.map((i) => P.buildPrompt(i)));
-  assert.equal(set.size, 5);
+  assert.equal(set.size, 8);
 });
 t('svg 模式的示例是手写 svg 片段', () => assert.ok(P.buildPrompt('svg').includes('<svg xmlns=')));
 t('协议仍明确要求 mathviz 代码块格式', () => assert.ok(P.buildPrompt('auto').includes('```mathviz')));
 t('任何模式的提示词都不自造闭合 fence（否则会被自己误渲染）', () => {
-  for (const id of ['auto', 'plot2d', 'solid3d', 'discrete', 'svg']) {
+  for (const id of ['auto', 'plot2d', 'solid3d', 'discrete', 'schematic', 'pcb', 'eng', 'svg']) {
     assert.equal(D.extractFenced(P.buildPrompt(id)).length, 0, id);
   }
 });
@@ -70,6 +78,39 @@ t('所有模式都强制要求 appendChild 挂载 svg', () => {
 });
 t('3D 模式强制 MK.space', () => assert.ok(P.buildPrompt('solid3d').includes('使用 `MK.space`')));
 t('离散模式强制 MK.graph', () => assert.ok(P.buildPrompt('discrete').includes('使用 `MK.graph`')));
+t('电路模式强制 MK.schematic，并禁止手拼导线', () => {
+  const s = P.buildPrompt('schematic');
+  assert.ok(s.includes('使用 `MK.schematic`'));
+  assert.ok(s.includes('C.wire("R1.r","Q1.c")'));
+  assert.ok(s.includes('C.report()'));
+  assert.ok(s.includes('不要写 `V.seg`'));
+});
+t('PCB 模式强制 MK.pcb，并说明毫米坐标与 y 向下', () => {
+  const s = P.buildPrompt('pcb');
+  assert.ok(s.includes('使用 `MK.pcb`'));
+  assert.ok(s.includes('毫米'));
+  assert.ok(s.includes('y 轴向下'));
+  assert.ok(s.includes('P.route'));
+});
+t('工程图模式强制 MK.eng，并禁止用 E.text 手写尺寸数字', () => {
+  const s = P.buildPrompt('eng');
+  assert.ok(s.includes('使用 `MK.eng`'));
+  assert.ok(s.includes('y 轴向上'));
+  assert.ok(s.includes('不要用 `E.text` 手写数字'));
+  assert.ok(s.includes('E.hatch'));
+});
+t('auto 模式把电路 / PCB / 工程图路由到新产线', () => {
+  const s = P.buildPrompt('auto');
+  assert.ok(s.includes('MK.schematic'));
+  assert.ok(s.includes('MK.pcb'));
+  assert.ok(s.includes('MK.eng'));
+  assert.ok(s.includes('有元件就别说坐标'));
+});
+t('新产线的示例都用到了各自的运行时', () => {
+  assert.ok(/MK\.schematic\(/.test(P.buildPrompt('schematic')));
+  assert.ok(/MK\.pcb\(/.test(P.buildPrompt('pcb')));
+  assert.ok(/MK\.eng\(/.test(P.buildPrompt('eng')));
+});
 t('深色主题写进协议', () => assert.ok(P.buildPrompt('auto', 'dark').includes('深色主题')));
 t('浅色主题写进协议', () => assert.ok(P.buildPrompt('auto', 'light').includes('浅色主题')));
 t('协议长度可控（< 8000 字）', () => assert.ok(P.buildPrompt('auto').length < 8000));

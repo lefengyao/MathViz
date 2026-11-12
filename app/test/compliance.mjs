@@ -45,6 +45,9 @@ export function parseBlocks(text) {
 /* ---------- 产线识别 ---------- */
 
 export function detectModule(code) {
+  if (/\bMK\.schematic\b/.test(code)) return 'schematic';
+  if (/\bMK\.pcb\b/.test(code)) return 'pcb';
+  if (/\bMK\.eng\b/.test(code)) return 'edraw';
   if (/\bMK\.space\b/.test(code) || /\bS\.(?:solid|face|sphere|box|prism|pyramid|plane|cylinder|polyline|scene)\b/.test(code)) return '3d';
   if (/\bMK\.(?:graph|matrix|venn)\b/.test(code)) return 'graph';
   if (/\bMK\.frame\b/.test(code)) return '2d';
@@ -66,7 +69,11 @@ const RULES = {
   R10: 'edges 写成对象：协议要求数组',
   R11: '手写 path/polyline：采样点自己算的，断点与渐近线会出错',
   R12: '写死颜色：深色/浅色主题切换后会看不清',
-  R13: '2D 块里没有 title（不影响渲染，读者少了一层信息）'
+  R13: '2D 块里没有 title（不影响渲染，读者少了一层信息）',
+  R14: '电路图里用绝对坐标连线：应写端口名，否则元件一挪线就断',
+  R15: '电路图里没有 C.wire：只摆了符号，图不成立',
+  R16: '工程图里用 E.text 手写尺寸数字：尺寸线、箭头、数值应由 dim 系列生成',
+  R17: 'PCB 没有走线：只有封装和板框，看不出连接关系'
 };
 
 function at(code, idx) {
@@ -168,22 +175,28 @@ export function lintBlock(block) {
       findings.push(report(code, 'R5', 'warn', 'createElementNS 手搓 SVG 图元', m.index));
     }
 
-    /* R7 跨模块 */
-    if (mod === '3d') {
-      const bad = /\bV\.(?:plot|param|polar|area|curve|legend|sample|dot|tag)\b/.exec(code);
-      if (bad) findings.push(report(code, 'R7', 'fail', '3D 块里用了 2D 的 ' + bad[0] + '（S 里没有这个函数）', bad.index));
-    }
-    if (mod === '2d') {
-      const bad = /\bS\.(?:solid|face|sphere|box|prism|pyramid|plane|polyline|scene)\b/.exec(code);
-      if (bad) findings.push(report(code, 'R7', 'fail', '2D 块里用了 3D 的 ' + bad[0] + '（V 里没有这个函数）', bad.index));
+    /* R7 跨模块 —— 每个产线只认自己的对象名 */
+    const OWN = { '2d': 'V', '3d': 'S', 'graph': 'G', 'schematic': 'C', 'pcb': 'P', 'edraw': 'E' };
+    const LABEL = { '2d': '2D', '3d': '3D', 'graph': '图论', 'schematic': '电路', 'pcb': 'PCB', 'edraw': '工程图' };
+    if (OWN[mod]) {
+      for (const k in OWN) {
+        if (k === mod) continue;
+        const re = new RegExp('\\b' + OWN[k] + '\\.([a-zA-Z_$]\\w*)');
+        const mm = re.exec(code);
+        if (mm) {
+          findings.push(report(code, 'R7', 'fail',
+            LABEL[mod] + '块里调了 ' + (LABEL[k] || k) + ' 的 ' + mm[0] + '（这个模块里没有它）', mm.index));
+        }
+      }
     }
     if (mod === 'none') {
-      const anyApi = /\b(?:V|S|G)\.[a-z]/.exec(code);
-      if (anyApi) findings.push(report(code, 'R7', 'fail', '调了 ' + anyApi[0] + ' 却没创建画布（缺 MK.frame / MK.space / MK.graph）', anyApi.index));
+      const anyApi = /\b(?:V|S|G|C|P|E)\.[a-zA-Z_$]\w*/.exec(code);
+      if (anyApi) findings.push(report(code, 'R7', 'fail',
+        '调了 ' + anyApi[0] + ' 却没创建画布（缺 MK.frame / MK.space / MK.graph / MK.schematic / MK.pcb / MK.eng）', anyApi.index));
     }
 
     /* R8 挂载 */
-    if (mod !== 'none' && !/getElementById\(\s*['"`]fig['"`]\s*\)\s*\.appendChild|appendChild\(\s*V\.svg|appendChild\(\s*S\.svg|appendChild\(\s*G\.svg/.test(code)) {
+    if (mod !== 'none' && !/getElementById\(\s*['"`]fig['"`]\s*\)\s*\.appendChild|appendChild\(\s*[VSGCPE]\.svg/.test(code)) {
       findings.push(report(code, 'R8', 'warn', '没把 svg 挂到 #fig', 0));
     }
 
@@ -210,6 +223,26 @@ export function lintBlock(block) {
 
     /* R13 缺 title */
     if (mod === '2d' && !/title\s*:/.test(code)) findings.push(report(code, 'R13', 'warn', '没有 title', 0));
+
+    /* R14 电路连线全用绝对坐标（一条端口名都没写） */
+    if (mod === 'schematic' && /C\.wire\s*\(/.test(code) && !/C\.wire\s*\(\s*['"`]/.test(code)) {
+      findings.push(report(code, 'R14', 'warn', '连线全用绝对坐标，应写端口名 "R1.r"（元件一挪线就断）', code.indexOf('C.wire')));
+    }
+
+    /* R15 只摆元件不连线 */
+    if (mod === 'schematic' && !/C\.(?:wire|wires)\s*\(/.test(code)) {
+      findings.push(report(code, 'R15', 'warn', '没有调用 C.wire，元件之间是断开的', 0));
+    }
+
+    /* R16 工程图手写尺寸数字 */
+    if (mod === 'edraw' && (m = /E\.text\(\s*\[[^\]]*\]\s*,\s*['"`][φΦ]?\d/.exec(code))) {
+      findings.push(report(code, 'R16', 'warn', '用 E.text 写了尺寸数值，改用 dimX/dimY/dimDia/dimRad', m.index));
+    }
+
+    /* R17 PCB 没有走线 */
+    if (mod === 'pcb' && !/P\.(?:trace|route)\s*\(/.test(code)) {
+      findings.push(report(code, 'R17', 'warn', '没有 P.trace / P.route，看不出电气连接', 0));
+    }
   }
 
   const fails = findings.filter((f) => f.level === 'fail');
@@ -288,7 +321,12 @@ async function selftest() {
     ['代码截断', 'R3', "var V = MK.frame({box:[40,26,600,330]});\nV.plot(function(x){return Math.sin(x);});\n// 其余部分...省略"],
     ['自己维护 yaw', 'R6', "var yaw = 0.4, pitch = 0.6;\nvar S = MK.space({});"],
     ['hand-made svg in js', 'R5', "var s = document.createElementNS('http://www.w3.org/2000/svg','svg');"],
-    ['edges 对象', 'R10', "var G = MK.graph({nodes:[{id:'A'},{id:'B'}], edges:{A:['B']}});"]
+    ['edges 对象', 'R10', "var G = MK.graph({nodes:[{id:'A'},{id:'B'}], edges:{A:['B']}});"],
+    ['电路用绝对坐标连线', 'R14', "var C = MK.schematic({box:[40,26,600,330]});\nC.wire([2,2],[5,2]);\ndocument.getElementById('fig').appendChild(C.svg);"],
+    ['电路只摆元件不连线', 'R15', "var C = MK.schematic({box:[40,26,600,330]});\nC.resistor({id:'R1',at:[2,2]});\ndocument.getElementById('fig').appendChild(C.svg);"],
+    ['工程图手写尺寸数字', 'R16', "var E = MK.eng({box:[40,30,600,380],ext:[100,60]});\nE.text([50,10],'40');\ndocument.getElementById('fig').appendChild(E.svg);"],
+    ['PCB 不画走线', 'R17', "var P = MK.pcb({box:[40,24,600,380],board:[50,32]});\nP.outline();\ndocument.getElementById('fig').appendChild(P.svg);"],
+    ['电路块里用 2D 的 V.plot', 'R7', "var C = MK.schematic({box:[40,26,600,330]});\nV.plot(function(x){return x;});\ndocument.getElementById('fig').appendChild(C.svg);"]
   ];
   let miss = 0;
   for (const [name, rule, code] of NEG) {

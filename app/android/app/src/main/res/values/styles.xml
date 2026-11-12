@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    窗口主题：全屏铺满（edge-to-edge），系统栏透明，由 MainActivity 自己按 insets 让出安全区。
+
+    为什么要这么写：targetSdk 35 起，Android 15 会强制所有 App 走 edge-to-edge，
+    "内容被状态栏/手势条压住" 就是没接 insets 的典型症状。这里不靠关闭新行为来回避
+    （windowOptOutEdgeToEdgeEnforcement 在 Android 16 已经失效），而是把系统栏设成透明、
+    再用 insets 给内容加内边距——页面底色会一路延伸到状态栏下面，视觉上是无缝的。
+-->
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

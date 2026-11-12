@@ -7,7 +7,7 @@
         android:allowBackup="false"
         android:label="MathViz"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:theme="@style/AppTheme"
         android:supportsRtl="true">
 
         <activity
