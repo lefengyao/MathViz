@@ -162,7 +162,12 @@ MuMu（Android 12 / WebView）上实测双指捏合 2.07×、平移跟手、双�
 - **屏幕外不排版**：卡片宿主加 `content-visibility:auto`，屏幕外的 shadow 树连
   样式与布局都跳过，长会话滚回顶部不用把几十张卡重算一遍。
 - **后台不扫描**：`document.hidden` 期间不扫 DOM，切回前台由 `visibilitychange`
-  补一次扫描 + 一次重算，避免后台攒下的回调在切回时集中爆发。
+  只补后台期间记录的变更 + 一次视口重算，不重读整份历史。
+- **历史消息增量识别**：只检查新增或改动的消息分支；侧栏样式、hover 和自己的图卡
+  不触发全页源码扫描。每 3 秒的兜底只检查主题和卸载清理，完整扫描限于启动和手动操作。
+  裸围栏用文本遍历定位，避免逐层拼接同一段历史文本。
+- **换源码立即释放任务**：历史消息被替换或卸载时，同步清理 iframe、观察器、超时和
+  并发名额，避免新图等到旧任务的 9 秒超时才启动。
 - **折叠即释放**：点「折叠」不再只是 `display:none`，iframe 一并清掉。
 - **主题切换走队列**：以前是 20 张图同时换 `src`，现在排队重画。
 
@@ -175,7 +180,7 @@ MuMu（Android 12 / WebView）上实测双指捏合 2.07×、平移跟手、双�
 切回标签页仍觉得卡时，先读三个探针（DevTools 控制台）：
 
 ```js
-document.documentElement.dataset.mvScan            // 最近 20 次全页扫描的耗时（ms）
+document.documentElement.dataset.mvScan            // 最近 20 次扫描的耗时（ms，含增量/轻量兜底）
 document.documentElement.dataset.mvLong            // 最近 30 个长任务（>50ms）的耗时
 document.documentElement.getAttribute('data-mv-wake')  // 最近 5 次切回前台：后台多久 + 卡片快照 + 唤醒耗时
 ```
@@ -191,13 +196,15 @@ document.documentElement.getAttribute('data-mv-wake')  // 最近 5 次切回前�
 另外扩展被重载/更新后，未刷新的旧标签页会优雅降级：卡片状态显示「扩展已更新，请刷新页面（F5）」，
 不再抛 `chrome.runtime` 相关异常（`platform-chrome.js` 里的 `alive()` 探活负责这个）。
 
-想复现或看自己的机器：`node test/perf.mjs --mobile`；机制本身由 `test/lazy.test.mjs` 10 项守着
-（首屏不提前画远处图 / 滚动到底能画 / 滚回重建 / 离屏换 `about:blank` 且高度不塌 / 折叠释放 /
-内部滚动容器 + 自动滚到底仍能画 / 无 JS 错误）。
+想复现或看自己的机器：`node test/perf.mjs --mobile`；机制本身由 `test/lazy.test.mjs` 11 项守着
+（首屏不提前画远处图 / 滚动到底能画 / 滚回重建 / 离屏移除 iframe 且高度不塌 / 折叠释放 /
+内部滚动容器 / 80 条历史回答前后翻看 / 无 JS 错误）。增量扫描与换源码调度由
+`test/history.test.mjs` 覆盖：静置和侧栏不重读旧代码、追加只检查新块、在途任务替换、
+跨 span 的裸围栏更新、未完成块计数与卸载清理。
 工程图自适应的边界（320px 窄容器 / 超长标题 / 空图 / 单点 / PCB）由 `test/eng-boundary.test.mjs` 守着。
 
-排查现场卡顿时，控制台执行 `document.documentElement.dataset.mvScan` 可看到最近 20 次全页扫描耗时
-（3ms 内正常；到几十毫秒说明是扫描而非绘图的问题）。
+排查现场卡顿时，控制台执行 `document.documentElement.dataset.mvScan` 可看到最近 20 次扫描耗时；
+初次完整识别与后续增量检查的工作量不同，需结合滚动位置和长任务记录判断。
 
 早期版本会「输入框一直闪烁 + 莫名其妙多出图」，根因是三个叠在一起的问题，现在都已修掉：
 
@@ -205,7 +212,7 @@ document.documentElement.getAttribute('data-mv-wake')  // 最近 5 次切回前�
 |---|---|---|
 | 多出一张图 | 提示词自带的「最小可运行示例」是一整段闭合的 ` ```mathviz ... ``` `，插进输入框 / 显示在用户消息里后，被扩展自己的扫描器当成模型输出渲染了 | 提示词里的示例只给**代码块内容**、不带首尾 fence；全文只出现一次 ` ```mathviz ` 字面量，凑不出闭合块 |
 | 用户消息里的示例也变图 | 扫描器把 `language-mathviz` 的示例 `pre`、以及协议正文里的 "mathviz" 字样都当成了目标 | 跳过输入框（含 `contenteditable`）、协议正文、用户消息气泡里的示例；语言标记判断收紧，代码块头部必须以 `mathviz` 开头 |
-| 输入框一直闪烁 | 误渲染的卡片插在输入框附近，加上扫描器写 DOM 又喂回自己的 MutationObserver，形成自激循环 | 扫描期间抑制自己触发的 MO 回调 + 280ms 防抖；样式写入前先比对，不重复写；同一模式重复点插入不再改写输入框 |
+| 输入框一直闪烁 | 误渲染的卡片插在输入框附近，加上扫描器写 DOM 又喂回自己的 MutationObserver，形成自激循环 | 过滤自身 UI 和无关样式变更，合并增量扫描；样式写入前先比对，不重复写；同一模式重复点插入不再改写输入框 |
 
 回归测试里专门留了两条断言：把完整协议塞进 `contenteditable`、以及用户消息气泡里放一个
 `language-mathviz` 示例，都不许再多出任何一张图。
@@ -246,7 +253,7 @@ content script（隔离世界，页面 DOM 可见）
   ├─ detect.js   ```mathviz 块识别 / 归一化 / 分类 / 摘要去重
   ├─ 工具条      Shadow DOM，左下角（避开 browser/ 那套的右下悬浮球）
   ├─ 插入        原生 value setter + input 事件；本轮只写一次，换模式才允许更新
-  └─ 观察器      MutationObserver（280ms 防抖 + 扫描期抑制自激），认 <pre><code> 和流式裸 fence
+  └─ 观察器      MutationObserver（100ms 合并变更分支 + 过滤自身 UI），认 <pre><code> 和流式裸 fence
                    渲染宿主 append 进原 <pre>、原 code 收起 → 代码块就地变图
                        │ postMessage（只传代码字符串，不传任何凭据）
                        ▼
@@ -306,7 +313,8 @@ mathviz/
 │   ├── eng.test.mjs       44 项工程运行时渲染断言（真实 Chromium）
 │   ├── export.test.mjs     9 项导出 PNG 断言（沙箱 iframe + canvas 不污染）
 │   ├── nav.test.mjs       24 项画布手势（滚轮/拖动/双指/复位/导出不受影响）
-│   ├── lazy.test.mjs      10 项渲染调度（分批/离屏暂存/滚回重建/折叠释放/内部滚动容器）
+│   ├── lazy.test.mjs      11 项渲染调度（含 80 条历史回答在内部容器前后翻看）
+│   ├── history.test.mjs   历史消息增量扫描 / 在途任务替换 / 流式围栏更新
 │   ├── perf.mjs           渲染压力基准（N 张图的耗时/内存/CPU，--mobile 模拟手机）
 │   ├── docsnip.mjs        把 skill/references 的代码块全跑一遍
 │   ├── shot.mjs           按 id 渲染用例并截图，供人眼校对排版
@@ -333,7 +341,8 @@ node build.mjs              # 产出 dist/extension/ + dist/extension.zip
 node test/core.test.mjs     # 67 项：提示词、代码块提取/归一化/分类、协议不自造闭合 fence
 node test/export.test.mjs   # 9 项：导出 PNG（尺寸/底色/3D 当前视角/多图拼合）
 node test/e2e.mjs           # 35 项：真实 Chromium 加载 unpacked 扩展（含点存图真下载）
-node test/lazy.test.mjs     # 10 项：渲染调度（分批 / 按需 iframe / 离屏移除 / 滚回重建 / 折叠释放 / 内部滚动容器）
+node test/lazy.test.mjs     # 11 项：渲染调度 + 80 条历史回答前后翻看（真实 unpacked 扩展）
+node test/history.test.mjs  # 历史消息增量扫描、任务替换、流式围栏、未完成计数
 node test/perf.mjs --mobile # 压力基准：手机视口 + CPU×5 降速下 N 张图的耗时与内存
 node test/interact.test.mjs # 15 项：拖拽旋转、点面高亮、信息栏、图论节点点选
 node test/compliance.mjs --selftest   # 规则自检：25 条正例零误判 / 12 条反例零漏检

@@ -231,6 +231,43 @@ await t('内部滚动容器 + 自动滚到底：视口内的图全部画出来',
   await p2.close();
 });
 
+await t('80 条历史回答批量载入后，前后翻看均能恢复且 iframe 数量受控', async () => {
+  const historyPage = await context.newPage();
+  const historyErrors = [];
+  historyPage.on('pageerror', (e) => historyErrors.push(e.message));
+  await historyPage.route(/^https:\/\/chat\.deepseek\.com\/history-stress/, (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: innerScrollHtml(80) }));
+  try {
+    await historyPage.goto('https://chat.deepseek.com/history-stress');
+    await historyPage.waitForFunction(() => document.querySelectorAll('.mv-card-host').length === 80);
+    const waitVisible = () => historyPage.waitForFunction(() => {
+      const hosts = [...document.querySelectorAll('.mv-card-host')];
+      const visible = hosts.filter((h) => { const r = h.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; });
+      return visible.length && visible.every((h) => h.shadowRoot.querySelector('[data-a="state"]').textContent.startsWith('已渲染'));
+    }, null, { timeout: 8000 });
+    await historyPage.evaluate(() => window.__toBottom());
+    await waitVisible();
+    await historyPage.evaluate(() => { document.getElementById('list').scrollTop = 0; });
+    await waitVisible();
+    await historyPage.evaluate(() => { document.getElementById('list').scrollTop = document.getElementById('list').scrollHeight / 2; });
+    await waitVisible();
+    await historyPage.evaluate(() => window.__toBottom());
+    await waitVisible();
+    const state = await historyPage.evaluate(() => {
+      const hosts = [...document.querySelectorAll('.mv-card-host')];
+      return {
+        cards: hosts.length,
+        frames: hosts.filter((h) => h.shadowRoot.querySelector('iframe')).length,
+        scans: document.documentElement.getAttribute('data-mv-scan')
+      };
+    });
+    eq(state.cards, 80, '重复挂载了历史图卡');
+    ok(state.frames <= 12, '离屏卡片未释放：' + state.frames + ' 个 iframe');
+    eq(historyErrors.length, 0, historyErrors.join(' | '));
+    console.log('      历史压力检查：' + state.cards + ' 张图 / ' + state.frames + ' 个 iframe；扫描 ms：' + state.scans);
+  } finally { await historyPage.close(); }
+});
+
 await t('全程没有未捕获的 JS 错误', async () => {
   eq(errors.length, 0, errors.join(' | '));
 });

@@ -17,7 +17,7 @@
   var CFG = { mode: 'auto', auto: false };
   var cards = new Map();          // id -> card record
   var mounted = new WeakMap();    // anchor element -> { digest, id }
-  var pending = new WeakMap();    // 还没写完的代码块 -> { code, since }
+  var pending = new Map();        // 未完成块；增量扫描时保留其他消息的计数
   var seq = 0;
   var theme = 'light';
   var scanTimer = null;
@@ -25,7 +25,9 @@
   var ui = null;
   var injected = false;           // 本轮对话是否已经给过提示词（同一会话只给一次）
   var injectedMode = null;        // 当时用的模式；换模式才允许更新一次
-  var scanning = false;           // 扫描期间抑制自己触发的 MutationObserver 回调
+  var scanning = false;
+  var dirtyRoots = new Set();     // 只检查发生变化的消息分支
+  var scanAll = false;            // 首次启动 / 手动重新扫描才全页检查
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -612,7 +614,7 @@
     return d;
   }
 
-  function collect() {
+  function collect(roots) {
     var found = new Map();   // digest -> candidate（取最内层锚点）
 
     function add(code, anchor, kind) {
@@ -625,7 +627,12 @@
     }
 
     /* ① 已经被 markdown 渲染成 <pre><code> 的块 */
-    var pres = document.querySelectorAll('pre');
+    var pres = new Set();
+    roots.forEach(function (root) {
+      if (root.matches && root.matches('pre')) pres.add(root);
+      root.querySelectorAll('pre').forEach(function (pre) { pres.add(pre); });
+    });
+    pres = Array.from(pres);
     for (var i = 0; i < pres.length; i++) {
       var pre = pres[i];
       if (skip(pre) || inUserBubble(pre)) continue;
@@ -652,15 +659,46 @@
     }
 
     /* ② 流式输出时还没被渲染成 pre 的裸 ```mathviz 文本 */
-    var all = document.querySelectorAll('div,p,section,article,li,span,td,blockquote');
-    for (var j = 0; j < all.length; j++) {
-      var n = all[j];
-      if (skip(n)) continue;
-      var txt = n.textContent || '';
-      if (txt.length > 30000 || txt.indexOf('```mathviz') < 0) continue;
-      var blocks = D.extractFenced(txt);
-      for (var b = 0; b < blocks.length; b++) add(blocks[b].code, n, blocks[b].kind);
-    }
+    /* 不再逐个容器读取整个子树的 textContent：长历史中祖先/子孙会反复拼接
+       同一大段文本。只遍历文本一次，遇到围栏才找能容纳完整代码的最小锚点。
+       PRE、输入框、脚本和自己的 UI 整个跳过，不重复分析已格式化的代码。 */
+    var seen = new Set();
+    roots.forEach(function (root) {
+      if (root.closest('pre,[data-mv-ui],[contenteditable],textarea,input,script,style,noscript')) return;
+      var tail = ''; // 分隔符可能跨文本节点，保留前两个字符即可识别，不拼接整棵子树
+      var walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+        acceptNode: function (node) {
+          if (node.nodeType === 1) {
+            if (node.matches('pre,[data-mv-ui],[contenteditable],textarea,input,script,style,noscript')) {
+              tail = '';
+              return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_SKIP;
+          }
+          var text = tail + (node.nodeValue || '');
+          tail = text.slice(-2);
+          return /```/.test(text) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        }
+      });
+      var textNode;
+      while ((textNode = walker.nextNode())) {
+        var n = textNode.parentElement;
+        while (n && n !== document.body && n !== document.documentElement) {
+          if (seen.has(n)) break;
+          var txt = n.textContent || '';
+          if (txt.length > 30000 || txt.indexOf(P.MARK) >= 0) break;
+          var blocks = D.extractFenced(txt);
+          if (blocks.length) {
+            seen.add(n);
+            for (var b = 0; b < blocks.length; b++) add(blocks[b].code, n, blocks[b].kind);
+            break;
+          }
+          /* 增量根之外可能是其他历史回答，不能借它的闭合围栏拼出一张重复图。 */
+          if (n === root) break;
+          n = n.parentElement;
+        }
+      }
+    });
 
     return found;
   }
@@ -722,29 +760,41 @@
   }
 
   function prune() {
-    cards.forEach(function (rec, id) {
+    cards.forEach(function (rec) {
       if (!rec.host.isConnected || !rec.anchor || !rec.anchor.isConnected) {
-        try { rec.host.remove(); } catch (e) {}
-        unobserve(rec);
-        dequeue(rec);
-        finish(rec);      /* 渲染中被删掉的卡片不能永久占着一个并发名额 */
-        cards.delete(id);
+        if (rec.anchor && rec.anchor.isConnected) schedule(rec.anchor);
+        disposeCard(rec);
       }
     });
+    pending.forEach(function (_, anchor) { if (!anchor.isConnected) pending.delete(anchor); });
   }
 
-  /* scan 期间我们自己在改 DOM（插 iframe、隐藏 code、改 pre 样式），
-     这些变更会喂回 MutationObserver 造成自激循环 —— 输入框看起来就是「一直闪烁」。 */
-  function scan() {
+  /* 换源码、历史消息被卸载，都必须归还名额，而不是只从 cards 里删掉。
+     否则旧沙箱再也收不到 done，新图会一直等到旧任务的 9 秒超时。 */
+  function disposeCard(rec) {
+    unobserve(rec);
+    dequeue(rec);
+    finish(rec);
+    if (rec.stuckTimer) { clearTimeout(rec.stuckTimer); rec.stuckTimer = 0; }
+    dropFrame(rec);
+    try { rec.host.remove(); } catch (e) {}
+    cards.delete(rec.id);
+  }
+
+  function scan(full) {
+    if (full !== false) scanAll = true;
     if (scanning) return;
     /* 后台标签不扫描：切回前台时 visibilitychange 会补一次，没必要在后台反复
        读一个正在被站点改写的 DOM（后台的定时器还会被节流，攒到切回时集中爆发）。 */
     if (document.hidden) return;
+    var roots = scanAll ? [document.body] : Array.from(dirtyRoots).filter(function (n) { return n.isConnected; });
+    dirtyRoots.clear();
+    scanAll = false;
     scanning = true;
     var t0 = (window.performance || {}).now ? performance.now() : 0;
-    try { scanBody(); } finally {
+    try { scanBody(roots); } finally {
       /* 调试探针：devtools 里读 document.documentElement.dataset.mvScan 就能看到最近几次
-         全页扫描花了多久（写在 DOM 上，页面自己的脚本也能读，方便脱离扩展上下文测）。
+         本轮扫描花了多久（写在 DOM 上，页面自己的脚本也能读，方便脱离扩展上下文测）。
          长会话变卡时先看这个数 —— 它比「感觉」可靠。 */
       try {
         var ms = Math.round((performance.now() - t0) * 10) / 10;
@@ -752,11 +802,11 @@
         prev.push(String(ms));
         document.documentElement.setAttribute('data-mv-scan', prev.slice(-20).join(','));
       } catch (e) {}
-      setTimeout(function () { scanning = false; }, 0);
+      scanning = false;
     }
   }
 
-  function scanBody() {
+  function scanBody(roots) {
     var t = themeNow();
     if (t !== theme) {
       theme = t;
@@ -772,14 +822,16 @@
     }
     prune();
 
-    var found = collect();
-    var incomplete = 0;
+    var found = collect(roots);
+    /* 已扫描分支可能已被站点改成普通文字，不能只清理仍然是候选块的记录。 */
+    pending.forEach(function (_, anchor) {
+      if (roots.some(function (root) { return root.contains(anchor); })) pending.delete(anchor);
+    });
     found.forEach(function (c) {
       /* 模型输出被截断 / 写了省略号时，代码块是半截的。不要闪出「渲染失败」：
          保留原代码块，等它写完整再自动渲染；计数里如实告知有几段没写完。 */
       if (!D.looksComplete(c.code)) {
         pending.set(c.anchor, { code: c.code, since: Date.now() });
-        incomplete++;
         return;
       }
       pending.delete(c.anchor);
@@ -789,8 +841,7 @@
         return;
       }
       if (prev && cards.has(prev.id)) {
-        try { cards.get(prev.id).host.remove(); } catch (e) {}
-        cards.delete(prev.id);
+        disposeCard(cards.get(prev.id));
       }
       var rec = makeCard(c.anchor, c.code, c.kind, c.digest);
       mountInto(rec);
@@ -798,13 +849,88 @@
     });
 
     if (ui) ui.count.textContent = cards.size + ' 张图'
-      + (incomplete ? ' · ' + incomplete + ' 段未写完' : '');
+      + (pending.size ? ' · ' + pending.size + ' 段未写完' : '');
   }
 
-  function schedule() {
-    if (scanning) return;
-    clearTimeout(scanTimer);
-    scanTimer = setTimeout(scan, 280);
+  function sourceAnchor(node) {
+    var pre = node.closest('pre');
+    if (pre) return pre;
+    while (node && node !== document.body && node !== document.documentElement) {
+      if (mounted.has(node) || pending.has(node)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function fenceScope(root) {
+    if (root.querySelector('pre')) return root;
+    var head = /```[ \t]*mathviz[^\r\n]*\r?\n/i;
+    var text = root.textContent || '';
+    if (text.indexOf('`') < 0 || head.test(text)) return root;
+    /* 未闭合的裸围栏还没有 mounted 锚点。结束符可能单独新增为 span/p/div；
+       向上找到包含开头的最小文本块，再把它作为有界的增量根。 */
+    var node = root.parentElement;
+    while (node && node !== document.body && node !== document.documentElement) {
+      text = node.textContent || '';
+      if (text.length > 30000 || text.indexOf(P.MARK) >= 0) break;
+      if (head.test(text)) return node;
+      node = node.parentElement;
+    }
+    return root;
+  }
+
+  function schedule(root) {
+    if (root) {
+      if (root.nodeType !== 1) root = root.parentElement;
+      if (!root || root.closest('[data-mv-ui],[contenteditable],textarea,input,script,style,noscript')) return;
+      /* 裸围栏可能被拆成多个 span。修改其中不带 ``` 的源码文本时，也要从
+         已识别的整块锚点重读，不能只检查这一片 span。 */
+      var anchor = sourceAnchor(root);
+      if (anchor) root = anchor;
+      else root = fenceScope(root);
+      var covered = false;
+      dirtyRoots.forEach(function (prev) {
+        if (prev.contains(root)) covered = true;
+        else if (root.contains(prev)) dirtyRoots.delete(prev);
+      });
+      if (!covered) dirtyRoots.add(root);
+    } else if (root !== false) scanAll = true;
+    /* 固定合并窗口，不反复重置：持续流式输出也不会把扫描无限往后推。 */
+    if (scanTimer) return;
+    scanTimer = setTimeout(function () { scanTimer = null; scan(false); }, 100);
+  }
+
+  function changed(records) {
+    records.forEach(function (record) {
+      var target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+      if (!target || target.closest('[data-mv-ui],[contenteditable],textarea,input,script,style,noscript')) return;
+      if (record.type === 'attributes') {
+        if (target === document.body || target === document.documentElement) schedule(false);
+        /* 普通 hover / 侧栏动画 / 原代码隐藏等样式变化不需要重新识别源码。 */
+        else if (record.attributeName !== 'style' && target.closest('pre')) schedule(target);
+        if ((record.attributeName === 'style' || record.attributeName === 'class')
+          && (target === document.documentElement || target === document.body || target.querySelector('.mv-card-host'))) scheduleEval();
+      } else if (record.type === 'characterData') {
+        schedule(target);
+      } else {
+        record.removedNodes.forEach(function (node) {
+          /* 外部重建只删图卡时要补回；主动 dispose 已先 unobserve，不会自激。 */
+          var rec = node.__mvRec;
+          if (rec && rec.anchor.isConnected && !rec.host.isConnected) schedule(rec.anchor);
+        });
+        if (target.closest('pre')) {
+          /* 自己塞回去的图卡不属于新模型输出。 */
+          var nodes = Array.from(record.addedNodes).concat(Array.from(record.removedNodes));
+          if (nodes.some(function (n) { return n.nodeType !== 1 || !n.matches('[data-mv-ui]'); })) schedule(target);
+        } else {
+          record.addedNodes.forEach(function (node) { schedule(node); });
+          if (record.removedNodes.length) {
+            var source = sourceAnchor(target);
+            schedule(source || false); // 裸围栏内删语句要更新，整条消息卸载只做清理
+          }
+        }
+      }
+    });
   }
 
   /* ---------------------------------------------------------------- */
@@ -972,12 +1098,12 @@
       buildUI();
       scan();
       setTimeout(scan, 900);
-      new MutationObserver(schedule).observe(document.body, {
+      new MutationObserver(changed).observe(document.documentElement, {
         childList: true, subtree: true, characterData: true,
-        attributes: true, attributeFilter: ['style', 'class']
+        attributes: true, attributeFilter: ['style', 'class', 'data-language', 'lang', 'data-theme']
       });
-      /* 主题切换 / SPA 换路由这类只改属性或干脆不触发 MO 的变化，靠低频兜底 */
-      setInterval(function () { if (!document.hidden) scan(); }, 3000);
+      /* 只兜底主题/卸载清理；消息内容由 MO 增量发现，不再定时重扫整个历史。 */
+      setInterval(function () { if (!document.hidden) scan(false); }, 3000);
 
       /* 滚动兜底：站点把消息列表放在自己的滚动容器里，容器的 scroll 不冒泡到
          window，IIntersectionObserver 的回调也可能晚一帧。滚轮/触摸一定会冒泡，
@@ -1027,7 +1153,7 @@
             document.documentElement.setAttribute('data-mv-wake', prev.slice(-5).join(','));
           }, 600);
         } catch (e) {}
-        schedule();        /* 后台期间站点可能追加了内容，先补一次扫描 */
+        schedule(false);   /* 只补后台期间记录的变更，不重读整份历史 */
         scheduleEval();    /* 再按当前滚动位置决定画谁、放谁 */
       });
 
